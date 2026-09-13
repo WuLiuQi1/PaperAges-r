@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../../core/storage/app_database.dart';
 import '../../reader_document/presentation/pdf_reader_screen.dart';
 import '../../reader_document/presentation/reader_document_screen.dart';
-import '../../reader_layout/presentation/page_turn_spike.dart';
 import '../../downloads/presentation/downloads_screen.dart';
 import '../../source_engine/presentation/source_management_screen.dart';
 import '../../source_engine/presentation/network_shelf_screen.dart';
@@ -17,7 +16,12 @@ import '../data/local_library_repository.dart';
 import '../domain/library_book.dart';
 
 class LocalLibraryScreen extends StatefulWidget {
-  const LocalLibraryScreen({super.key, this.repository});
+  const LocalLibraryScreen({
+    super.key,
+    this.repository,
+    this.initialSearch = false,
+  });
+  final bool initialSearch;
   final LocalLibraryRepository? repository;
   @override
   State<LocalLibraryScreen> createState() => _LocalLibraryScreenState();
@@ -32,6 +36,7 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    _searching = widget.initialSearch;
     _repositoryFuture = widget.repository != null
         ? Future.value(widget.repository)
         : AppDatabase.defaults().then(LocalLibraryRepository.new);
@@ -101,70 +106,38 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
               ),
               onChanged: (_) => setState(() {}),
             )
-          : const Text('Paper Ages'),
+          : const Text('书库'),
       actions: [
-        if (!_searching)
-          IconButton(
-            tooltip: '设置',
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        if (_searching)
-          IconButton(
-            tooltip: '清除搜索',
-            onPressed: () => setState(_searchController.clear),
-            icon: const Icon(Icons.clear),
-          )
-        else
-          IconButton(
-            tooltip: '搜索本地书库',
-            onPressed: () => setState(() => _searching = true),
-            icon: const Icon(Icons.search),
-          ),
-        if (_searching)
-          IconButton(
-            tooltip: '取消搜索',
-            onPressed: () => setState(() {
-              _searchController.clear();
-              _searching = false;
-            }),
-            icon: const Icon(Icons.close),
-          ),
         IconButton(
-          tooltip: '阅读统计',
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ReadingStatisticsScreen()),
-          ),
-          icon: const Icon(Icons.insights_outlined),
+          tooltip: _searching ? '取消搜索' : '搜索本地书库',
+          onPressed: () => setState(() {
+            _searching = !_searching;
+            if (!_searching) _searchController.clear();
+          }),
+          icon: Icon(_searching ? Icons.close : Icons.search),
         ),
-        IconButton(
-          tooltip: '交互样板',
-          onPressed: () => Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const PageTurnSpike())),
-          icon: const Icon(Icons.science_outlined),
+        PopupMenuButton<String>(
+          tooltip: '书库更多操作',
+          icon: const Icon(Icons.more_horiz),
+          onSelected: (value) {
+            final Widget page = switch (value) {
+              'sources' => const SourceManagementScreen(),
+              'downloads' => const DownloadsScreen(),
+              'network' => const NetworkShelfScreen(),
+              'statistics' => const ReadingStatisticsScreen(),
+              _ => const SettingsScreen(),
+            };
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'network', child: Text('网络书架')),
+            PopupMenuItem(value: 'sources', child: Text('书源管理')),
+            PopupMenuItem(value: 'downloads', child: Text('下载任务')),
+            PopupMenuItem(value: 'statistics', child: Text('阅读统计')),
+            PopupMenuItem(value: 'settings', child: Text('设置')),
+          ],
         ),
-        IconButton(
-          tooltip: '书源管理',
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SourceManagementScreen()),
-          ),
-          icon: const Icon(Icons.travel_explore_outlined),
-        ),
-        IconButton(
-          tooltip: '下载任务',
-          onPressed: () => Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const DownloadsScreen())),
-          icon: const Icon(Icons.download_outlined),
-        ),
-        IconButton(
-          tooltip: '网络书架',
-          onPressed: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const NetworkShelfScreen())),
-          icon: const Icon(Icons.cloud_queue_outlined),
-        ),
+        const SizedBox(width: 8),
       ],
     ),
     body: FutureBuilder<LocalLibraryRepository>(

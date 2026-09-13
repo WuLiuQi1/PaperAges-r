@@ -1,5 +1,7 @@
 import 'package:file_selector/file_selector.dart';
 
+import '../../../core/platform/import_file_types.dart';
+
 class PickedBookFile {
   const PickedBookFile({
     required this.name,
@@ -17,9 +19,7 @@ class FileSelectorBookPicker {
 
   Future<PickedBookFile?> pick() async {
     final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(label: '书籍文件', extensions: ['txt', 'pdf']),
-      ],
+      acceptedTypeGroups: const [ImportFileTypes.books],
     );
     if (file == null) return null;
     return PickedBookFile(
@@ -31,9 +31,7 @@ class FileSelectorBookPicker {
 
   Future<PickedBookFile?> pickFont() async {
     final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(label: '字体', extensions: ['ttf', 'otf']),
-      ],
+      acceptedTypeGroups: const [ImportFileTypes.fonts],
     );
     if (file == null) return null;
     return PickedBookFile(

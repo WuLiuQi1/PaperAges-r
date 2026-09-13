@@ -1,4 +1,6 @@
 case_id,status,evidence
+T003,In progress,"build 1.0.0+2: shell layout revised against reference frames; phone-sized widget test passed; U01-U12 visual acceptance and iOS typography remain open"
+IMPORT-IOS,Fixed in code,"build 1.0.0+2: extension-only failure reproduced with real FileSelectorIOS adapter; corrected book/TXT/JSON/font groups pass; native picker and device imports not yet verified"
 T001,In progress,"Android Debug APK assembled and structurally inspected, 2026-09-13; iOS build remains unavailable on Windows"
 T019,Implemented,"PageTurnPolicy and widget drag tests: flutter test, 2026-09-13; device verification pending"
 T059,Implemented,"RuleSafetyPolicy rejects explicit @js and script execution paths: flutter test, 2026-09-13; importer integration pending"

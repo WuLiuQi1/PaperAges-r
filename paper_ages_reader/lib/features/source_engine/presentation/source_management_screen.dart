@@ -1,6 +1,8 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/platform/import_file_types.dart';
+
 import '../../../core/storage/app_database.dart';
 import '../application/legado_source_importer.dart';
 import '../data/local_source_repository.dart';
@@ -28,9 +30,7 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
     setState(() => _importing = true);
     try {
       final file = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(label: 'Legado JSON', extensions: ['json']),
-        ],
+        acceptedTypeGroups: const [ImportFileTypes.sources],
       );
       if (file == null) {
         return;

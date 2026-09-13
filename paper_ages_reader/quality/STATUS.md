@@ -9,7 +9,17 @@ Last updated: 2026-09-13
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
 | G3 online and offline | In progress — implementation assembled; acceptance gates open | Safe static sources support search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching. A compatible live source plus Android device validation are still required before this stage can be accepted. |
 | G4 | In progress — foundations implemented; platform/service gates open | Offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Native TTS/media service, WebDAV transport/settings and all device/two-device acceptance remain. |
-| G5-G6 | Not started | No distribution artifact or final acceptance. |
+| G5 | In progress — device defects reopened | User iPhone screenshots show import-picker failure and substantial visual gaps. See 2026-09-13 correction below. Final visual acceptance is not passed. |
+| G6 | In progress | GitHub iOS packaging workflow exists; build success and device acceptance must be tracked separately. |
+
+## 2026-09-13 iPhone import and shell correction (build 1.0.0+2)
+
+- Root cause: all four file-selector type groups specified extensions only. The locked iOS adapter rejects these before native picker presentation. Added shared UTIs for TXT/PDF, JSON, and TTF/OTF, retaining extension filters for other platforms.
+- Regression: real `FileSelectorIOS` Dart adapter with mocked native transport reproduces the old error and verifies each corrected group reaches transport; cancel returns null. This is not native Files/iCloud end-to-end validation.
+- UI: neutral light/black dark surfaces, large leading titles, rounded three-tab navigation, compact library overflow menu, no production spike shortcut, separate working local/online search entry points, home settings and semicircular reading goal. Existing repositories and stored books are preserved.
+- Validation: `dart analyze` clean; `flutter test --no-pub` 85 passed. Phone-sized shell test covers tabs/menu and absence of layout exceptions. Review renders in ignored `build/ui-review/`; substitute Windows/test fonts do not prove iOS typography fidelity.
+- Remaining R02 differences: U01-U12 are not fully reference-aligned; populated shelf cover/progress/menu presentation, search inline layout, reader transitions and native safe-area/blur/font behavior still require work and device review. Light appearance is a design inference from the supplied dark reference frames.
+- Native TXT/PDF/JSON/font selection, iCloud providers, Android device import, and iOS build+install of this revision: not yet verified. Do not mark G5 complete based on these unit/widget results.
 
 ## G0 evidence
 

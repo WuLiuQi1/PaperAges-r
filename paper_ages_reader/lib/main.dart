@@ -4,24 +4,66 @@ import 'features/home/presentation/home_shell.dart';
 
 void main() => runApp(const PaperAgesApp());
 
-/// Application root. G1 temporarily hosts an isolated interaction harness.
+/// Application root; reading surfaces keep their own document themes.
 class PaperAgesApp extends StatelessWidget {
   const PaperAgesApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Paper Ages',
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF8A6842)),
-      useMaterial3: true,
-    ),
-    darkTheme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFFC9A878),
-        brightness: Brightness.dark,
-      ),
-      useMaterial3: true,
-    ),
+    debugShowCheckedModeBanner: false,
+    theme: _theme(Brightness.light),
+    darkTheme: _theme(Brightness.dark),
     home: const HomeShell(),
   );
+
+  ThemeData _theme(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    final background = dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
+    final surface = dark ? const Color(0xFF242424) : const Color(0xFFF2F2F7);
+    final foreground = dark ? Colors.white : const Color(0xFF1C1C1E);
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      scaffoldBackgroundColor: background,
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: const Color(0xFFB65B24),
+            brightness: brightness,
+          ).copyWith(
+            surface: background,
+            surfaceContainerLow: surface,
+            surfaceContainer: surface,
+            secondaryContainer: surface,
+            onSecondaryContainer: foreground,
+            primary: foreground,
+            onPrimary: background,
+          ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: background,
+        foregroundColor: foreground,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        toolbarHeight: 84,
+        titleTextStyle: TextStyle(
+          color: foreground,
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -.8,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: surface,
+        foregroundColor: foreground,
+        elevation: 0,
+        shape: const StadiumBorder(),
+      ),
+    );
+  }
 }
