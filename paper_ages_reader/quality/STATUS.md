@@ -8,7 +8,8 @@ Last updated: 2026-09-13
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
 | G3 online and offline | In progress — implementation assembled; acceptance gates open | Safe static sources support search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching. A compatible live source plus Android device validation are still required before this stage can be accepted. |
-| G4-G6 | Not started | No production system/sync completion, device validation or distribution artifact. |
+| G4 | In progress — foundations implemented; platform/service gates open | Offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Native TTS/media service, WebDAV transport/settings and all device/two-device acceptance remain. |
+| G5-G6 | Not started | No distribution artifact or final acceptance. |
 
 ## G0 evidence
 
@@ -195,3 +196,37 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   same local transaction as shelf metadata. Re-adding it cannot reverse a
   later switch, and the network shelf opens the persisted binding first rather
   than implicitly returning to its original source.
+
+## G4 evidence
+
+- `VoiceDescriptor` now carries locale and an availability reason alongside
+  its offline eligibility. `SpeechTextNormalizer` turns normalized chapter
+  text into bounded, stable chapter/sentence anchors; it never refers to a
+  rendered page, so font or layout changes do not invalidate a queued
+  narration position. The existing generation gate still prevents a stopped
+  session's stale native callback from changing a newer session.
+- `ReadingActivityTracker` receives a monotonic elapsed-time function and
+  records the union of active reading and listening intervals. It cannot
+  double-count concurrent visual reading/audio and rejects negative elapsed
+  spans. Daily keys are supplied by the app boundary, so a future app lifecycle
+  adapter can checkpoint exactly at a local-day boundary. It does not yet have
+  a reader-screen lifecycle binding or a statistics screen.
+- Local state schema v5 adds separate reading-statistics and sync stores;
+  v1-v4 data migrates without discarding existing library/source/download data.
+  `SyncEventCodec` encodes the protocol's schema/device sequence/parents/type
+  and validates a canonical SHA-256 payload hash before application. The
+  durable outbox uses the same atomic database transaction and refuses fields
+  outside the strict whitelist before they are stored. Credentials, bodies,
+  imported files, audio, fonts, paths, reading statistics and preferences have
+  no permitted route into these events.
+- iOS declares the audio background mode. This is configuration only: there is
+  no native AVSpeech/Android media-service adapter yet, therefore no claim is
+  made for background, lock-screen, interruption or headset behavior.
+- On 2026-09-13, `dart analyze` completed with no diagnostics and `flutter
+  test` passed 69 tests, including G4 speech anchoring, interval-union,
+  payload-tampering and persisted-outbox cases. No WebDAV endpoint, Android
+  device, iOS/macOS build or two-device conflict recovery has been run.
+- `:app:assembleDebug --no-daemon` also completed successfully after the G4
+  changes. It is a compile/package check only; Gradle emitted existing AGP /
+  Kotlin deprecation and SDK-XML compatibility warnings, and no physical
+  Android installation was performed.

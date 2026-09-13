@@ -33,7 +33,7 @@ class AppDatabase {
   }
 
   static Map<String, Object?> _empty() => {
-    'schemaVersion': 4,
+    'schemaVersion': 5,
     'books': <Object?>[],
     'positions': <String, Object?>{},
     'preferences': <String, Object?>{},
@@ -41,6 +41,9 @@ class AppDatabase {
     'networkBooks': <Object?>[],
     'sourceBindings': <String, Object?>{},
     'downloadTasks': <Object?>[],
+    'readingStatistics': <String, Object?>{},
+    'syncOutbox': <Object?>[],
+    'syncAppliedEventIds': <Object?>[],
   };
 
   Future<void> _open() async {
@@ -52,26 +55,39 @@ class AppDatabase {
     _data = Map<String, Object?>.from(decoded);
     final version = _data['schemaVersion'];
     if (version == 1) {
-      _data['schemaVersion'] = 4;
+      _data['schemaVersion'] = 5;
       _data['sources'] = <Object?>[];
       _data['networkBooks'] = <Object?>[];
       _data['sourceBindings'] = <String, Object?>{};
       _data['downloadTasks'] = <Object?>[];
+      _addV5Fields();
       await _write(_data);
     } else if (version == 2) {
-      _data['schemaVersion'] = 4;
+      _data['schemaVersion'] = 5;
       _data['networkBooks'] = <Object?>[];
       _data['sourceBindings'] = <String, Object?>{};
       _data['downloadTasks'] = <Object?>[];
+      _addV5Fields();
       await _write(_data);
     } else if (version == 3) {
-      _data['schemaVersion'] = 4;
+      _data['schemaVersion'] = 5;
       _data['sourceBindings'] = <String, Object?>{};
       _data['downloadTasks'] = <Object?>[];
+      _addV5Fields();
       await _write(_data);
-    } else if (version != 4) {
+    } else if (version == 4) {
+      _data['schemaVersion'] = 5;
+      _addV5Fields();
+      await _write(_data);
+    } else if (version != 5) {
       throw const FormatException('Unsupported local library database version');
     }
+  }
+
+  void _addV5Fields() {
+    _data['readingStatistics'] ??= <String, Object?>{};
+    _data['syncOutbox'] ??= <Object?>[];
+    _data['syncAppliedEventIds'] ??= <Object?>[];
   }
 
   Stream<List<Map<String, Object?>>> watchBooks() async* {
@@ -118,6 +134,23 @@ class AppDatabase {
         .map((row) => Map<String, Object?>.from(row)),
   );
 
+  Map<String, Object?> get readingStatistics => Map.unmodifiable(
+    Map<String, Object?>.from(
+      (_data['readingStatistics'] as Map?) ?? const <String, Object?>{},
+    ),
+  );
+
+  List<Map<String, Object?>> get syncOutbox => List.unmodifiable(
+    ((_data['syncOutbox'] as List?) ?? const <Object?>[]).whereType<Map>().map(
+      (row) => Map<String, Object?>.from(row),
+    ),
+  );
+
+  List<String> get syncAppliedEventIds => List.unmodifiable(
+    ((_data['syncAppliedEventIds'] as List?) ?? const <Object?>[])
+        .whereType<String>(),
+  );
+
   Map<String, Object?>? sourceBinding(String bookId) {
     final raw = Map<String, Object?>.from(
       (_data['sourceBindings'] as Map?) ?? const <String, Object?>{},
@@ -156,6 +189,15 @@ class AppDatabase {
     );
     next['downloadTasks'] = List<Object?>.from(
       (_data['downloadTasks'] as List?) ?? const <Object?>[],
+    );
+    next['readingStatistics'] = Map<String, Object?>.from(
+      (_data['readingStatistics'] as Map?) ?? const <String, Object?>{},
+    );
+    next['syncOutbox'] = List<Object?>.from(
+      (_data['syncOutbox'] as List?) ?? const <Object?>[],
+    );
+    next['syncAppliedEventIds'] = List<Object?>.from(
+      (_data['syncAppliedEventIds'] as List?) ?? const <Object?>[],
     );
     change(next);
     await _write(next);

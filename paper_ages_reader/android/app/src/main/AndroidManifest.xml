@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Runtime media service implementation is intentionally not declared yet:
+         permissions alone do not make background TTS reliable. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="paper_ages_reader"
         android:name="${applicationName}"

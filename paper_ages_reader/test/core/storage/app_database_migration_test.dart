@@ -44,6 +44,6 @@ void main() {
 
     final decoded =
         jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-    expect(decoded['schemaVersion'], 4);
+    expect(decoded['schemaVersion'], 5);
   });
 }

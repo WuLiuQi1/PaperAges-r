@@ -16,14 +16,67 @@ class VoiceDescriptor {
     required this.voiceId,
     required this.installed,
     required this.requiresNetwork,
+    this.locale = 'und',
+    this.availabilityReason,
   });
 
   final String engineId;
   final String voiceId;
   final bool installed;
   final bool requiresNetwork;
+  final String locale;
+  final String? availabilityReason;
 
   bool get isUsableOffline => installed && !requiresNetwork;
+}
+
+/// A stable text coordinate. It deliberately refers to normalized content,
+/// never a rendered page, so appearance changes cannot restart narration.
+class SpeechAnchor {
+  const SpeechAnchor({required this.chapterKey, required this.sentenceIndex});
+
+  final String chapterKey;
+  final int sentenceIndex;
+}
+
+class SpeechSentence {
+  const SpeechSentence(this.text, this.anchor);
+
+  final String text;
+  final SpeechAnchor anchor;
+}
+
+/// Small deterministic segmenter for the synthesis queue. It covers Chinese
+/// punctuation, ordinary Latin sentence endings and bounds very long runs.
+class SpeechTextNormalizer {
+  const SpeechTextNormalizer({this.maximumSentenceLength = 280});
+
+  final int maximumSentenceLength;
+
+  List<SpeechSentence> segment(String chapterKey, String raw) {
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return const [];
+    final chunks = <String>[];
+    var start = 0;
+    for (var index = 0; index < normalized.length; index++) {
+      final character = normalized[index];
+      final boundary = '。！？；.!?;'.contains(character);
+      if (boundary || index - start + 1 >= maximumSentenceLength) {
+        final value = normalized.substring(start, index + 1).trim();
+        if (value.isNotEmpty) chunks.add(value);
+        start = index + 1;
+      }
+    }
+    final tail = normalized.substring(start).trim();
+    if (tail.isNotEmpty) chunks.add(tail);
+    return List.unmodifiable([
+      for (var i = 0; i < chunks.length; i++)
+        SpeechSentence(
+          chunks[i],
+          SpeechAnchor(chapterKey: chapterKey, sentenceIndex: i),
+        ),
+    ]);
+  }
 }
 
 class AudioSessionState {
