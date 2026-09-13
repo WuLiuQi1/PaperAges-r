@@ -84,6 +84,12 @@ normalizes BOM and line endings but does not collapse or strip content.
 and normalization version. Chunking may prepare work units but never decides
 visual pages, which still require actual font/viewport layout.
 
+`file_selector 1.1.0` (Flutter.dev, BSD-3-Clause) is selected for the native
+Android/iOS file-selection UI. The first adapter is TXT-only and explicitly
+accepts UTF-8: cancellation and malformed data stay distinguishable from a
+successful import. Common Chinese legacy encoding detection, sandbox copy and
+transactional book persistence remain separate, unimplemented work.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition

@@ -84,3 +84,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   stores a context hash. `GraphemeSafeChunker` round-trips Chinese, emoji,
   combining characters and URLs without breaking clusters. Four focused tests
   pass. This is not yet file-picker import, encoding detection or visual layout.
+- `FileSelectorTextFilePicker` selects `.txt` files through the maintained
+  native cross-platform selector. The import boundary recognizes UTF-8,
+  cancellation and malformed bytes; three focused tests pass. It is not yet a
+  persisted import and does not claim GBK/GB18030 support.
