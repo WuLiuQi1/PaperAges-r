@@ -1,3 +1,4 @@
 case_id,status,evidence
 T001,In progress,"Flutter project and lockfile exist; Android/iOS builds not run"
-T002-T064,Not run,"No execution evidence"
+T019,Implemented,"PageTurnPolicy and widget drag tests: flutter test, 2026-09-13; device verification pending"
+T002-T018,T020-T064,Not run,"No execution evidence"

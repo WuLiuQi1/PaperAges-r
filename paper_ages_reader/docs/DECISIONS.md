@@ -19,6 +19,16 @@ offline TTS/media sessions, and WebDAV immutable-event merge/whitelist behavior.
 No storage, PDF, parser, TTS or WebDAV dependency is selected before its
 relevant spike records maintenance, license and platform evidence.
 
+### G1 page-turn result (2026-09-13)
+
+The first harness keeps the transition decision in `PageTurnPolicy`, outside
+the animation widgets. A small drag returns `stay`; threshold distance or fling
+velocity determines one previous/next outcome; unavailable geometry remains
+`stay`. Slide, fade and continuous scroll have separate visual branches but
+share that decision policy where pagination applies. The harness uses fixed
+pages and does not claim real pagination, anchors, device gesture validation or
+the required page-curl effect.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition

@@ -5,7 +5,7 @@ Last updated: 2026-09-13
 | Stage | Status | Evidence / limitation |
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, `dart analyze` and one G0 test pass. Android build is externally blocked; iOS requires macOS. |
-| G1 risk spikes | Not started | No pagination, curl, PDF, source, audio or WebDAV assumption is validated. |
+| G1 risk spikes | In progress | Text page-turn policy and slide/fade/scroll interaction harness have unit/widget evidence; device/page-curl/PDF/source/audio/WebDAV work remains. |
 | G2-G6 | Not started | No production feature, device validation or distribution artifact. |
 
 ## G0 evidence
@@ -26,3 +26,17 @@ Last updated: 2026-09-13
 The full supplied scenario inventory is at
 `F:\Project\PaperAges\Reader-Codex-开发文档包\Reader-Codex-DevKit\quality\acceptance-matrix.csv`.
 No scenario is Passed. T001 is In progress; T002-T064 are Not run.
+
+## G1 evidence
+
+- `PageTurnPolicy` has a single completion decision path: a short slow drag
+  stays put, threshold drag and fling commit direction once, and unavailable
+  geometry never commits. Six focused unit/widget tests pass.
+- The harness provides slide, fade and continuous-scroll branches over two
+  fixed pages. It is not production pagination and does not persist a position.
+- T019 is **Implemented**, not Verified: widget tests cover the cancel/commit
+  logic, but no Android/iOS device gesture test exists. T020 remains Not run;
+  the current slide transition is explicitly not presented as a page curl.
+- First test run found two test-harness defects (missing `Key` import and a
+  missing MaterialApp/Directionality ancestor). Both were fixed, then all tests
+  were rerun successfully.
