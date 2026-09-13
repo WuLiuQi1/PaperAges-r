@@ -9,6 +9,7 @@ import '../../reader_layout/presentation/page_turn_spike.dart';
 import '../../downloads/presentation/downloads_screen.dart';
 import '../../source_engine/presentation/source_management_screen.dart';
 import '../../source_engine/presentation/network_shelf_screen.dart';
+import '../../statistics/presentation/reading_statistics_screen.dart';
 import '../application/document_decoder.dart';
 import '../data/file_selector_book_picker.dart';
 import '../data/local_library_repository.dart';
@@ -82,6 +83,13 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
     appBar: AppBar(
       title: const Text('Paper Ages'),
       actions: [
+        IconButton(
+          tooltip: '阅读统计',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ReadingStatisticsScreen()),
+          ),
+          icon: const Icon(Icons.insights_outlined),
+        ),
         IconButton(
           tooltip: '交互样板',
           onPressed: () => Navigator.of(context)
