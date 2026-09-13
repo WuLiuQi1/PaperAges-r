@@ -158,10 +158,14 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   task payload durability, source-rule rejection, cancellation, cache
   isolation and source-switch stale/empty rejection. This is not a live-source
   or physical-device verification.
-- A post-G3 `flutter build apk --debug` attempt reached Gradle resource/DEX
-  work but exited without producing an APK or a diagnostic terminal error.
-  It is therefore **not** build evidence and must be rerun from VS Code or a
-  visible terminal before Android acceptance.
+- The latest G3 code was assembled with
+  `./gradlew.bat :app:assembleDebug --no-daemon --stacktrace` from `android/` on
+  2026-09-13. It produced
+  `build/app/outputs/apk/debug/app-debug.apk` (221,660,789 bytes; SHA-256
+  `B575BDD82812C536D5B1AD6B0CE3EFA3B3FA30569C95F446C2A5636BB475A93E`).
+  The APK contains `classes.dex`, Flutter assets, ARM64 Flutter/PDFium
+  libraries. Gradle emitted SDK-XML and AGP/Kotlin deprecation warnings but
+  exited `BUILD SUCCESSFUL`; no Android device was attached for installation.
 - [source-compatibility.csv](source-compatibility.csv) distinguishes the
   mocked static CSS fixture from the supplied script-bearing JSON. It records
   no unverified source as compatible and contains no user path, credential or
