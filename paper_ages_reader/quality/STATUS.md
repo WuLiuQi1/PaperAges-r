@@ -6,7 +6,7 @@ Last updated: 2026-09-13
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
-| G2 reading and state | In progress | TXT normalization, grapheme-safe chunking and text-anchor contracts are implemented and tested; import storage, real layout, theme/font, progress and PDF renderer remain. |
+| G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
 | G3-G6 | Not started | No production online/offline feature, device validation or distribution artifact. |
 
 ## G0 evidence
@@ -81,6 +81,26 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 
 ## G2 evidence
 
+- The library now accepts TXT and PDF through the native file picker. It writes
+  an imported copy to the application documents directory via a `.part` file
+  and atomic rename, then writes the book index through the versioned local
+  state store. A failed index write deletes the copied import; cache cleanup
+  does not target the imports/font folders.
+- TXT uses strict UTF-8 first, then explicit GB18030, GBK and Big5 platform
+  codecs. Successful legacy imports are normalized to UTF-8 once and keep their
+  detected source encoding as metadata. This avoids different decoder guesses
+  on a later open.
+- Opening a TXT restores its saved block anchor and persists a new anchor only
+  after a page change. Size, line-height and a copied TTF/OTF font are saved as
+  reader preferences; a bad font keeps the last usable font and shows feedback.
+- PDF is displayed as its original fixed layout with the `pdfrx` native viewer;
+  its Android native PDFium libraries were found in the Debug APK. Password,
+  damaged-file and real-device pan/zoom recovery have not yet been accepted.
+- `dart analyze` passed with no diagnostics and `flutter test --reporter
+  expanded` passed 37 tests. `:app:assembleDebug --no-daemon` completed and
+  produced a 220,849,788-byte APK containing `classes.dex`, Flutter assets and
+  PDFium libraries. None of these are a physical-device test.
+
 - `TextNormalizer` preserves empty blocks while removing BOM and normalizing
   line endings. `TextAnchorResolver` snaps offsets to grapheme boundaries and
   stores a context hash. `GraphemeSafeChunker` round-trips Chinese, emoji,
@@ -90,7 +110,8 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   native cross-platform selector. The import boundary recognizes UTF-8,
   cancellation and malformed bytes; three focused tests pass. It is not yet a
   persisted import and does not claim GBK/GB18030 support.
-- `LocalLibraryScreen` wires native TXT selection into the app entry point and
-  opens a normalized-text preview. Import success and cancellation have widget
-  integration evidence. This remains session-only: no durable book record,
-  original-file copy, encoding fallback, real pagination or restore yet.
+- `LocalLibraryScreen` is no longer a session-only preview: it presents the
+  persistent book grid and opens the durable TXT/PDF routes. The old widget
+  integration test was removed because it exercised the replaced session-only
+  screen; the surviving text-import contract tests still cover cancel, malformed
+  data and UTF-8 normalization.

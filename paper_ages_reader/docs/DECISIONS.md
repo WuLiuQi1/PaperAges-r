@@ -99,6 +99,20 @@ workspace is on F:. `kotlin.incremental=false` is scoped to this project; it
 keeps Kotlin compilation enabled while avoiding the invalid cross-root cache
 path. A single clean Debug assembly then produced a structurally valid APK.
 
+## G2 local import and rendering
+
+The G2 library uses a versioned JSON index in the app documents directory with
+atomic replacement, separate imported-file/font folders and repository-only
+access. Drift code generation was evaluated but its build entrypoint cannot be
+written in this OneDrive/non-ASCII path; it was not left as an unbuildable
+dependency. The smaller store keeps explicit schema versioning and recovery
+semantics while avoiding a toolchain-only failure.
+
+TXT is decoded strictly as UTF-8 before a documented GB18030/GBK/Big5 fallback,
+then stored as normalized UTF-8 with the input encoding recorded. `pdfrx 2.6.1`
+is selected for fixed-layout PDF rendering; its first Android build includes
+PDFium libraries. This is a build result, not gesture/performance approval.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition
