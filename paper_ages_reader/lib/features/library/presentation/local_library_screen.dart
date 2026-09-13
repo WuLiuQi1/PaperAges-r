@@ -10,6 +10,7 @@ import '../../downloads/presentation/downloads_screen.dart';
 import '../../source_engine/presentation/source_management_screen.dart';
 import '../../source_engine/presentation/network_shelf_screen.dart';
 import '../../statistics/presentation/reading_statistics_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
 import '../application/document_decoder.dart';
 import '../data/file_selector_book_picker.dart';
 import '../data/local_library_repository.dart';
@@ -102,6 +103,14 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
             )
           : const Text('Paper Ages'),
       actions: [
+        if (!_searching)
+          IconButton(
+            tooltip: '设置',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            icon: const Icon(Icons.settings_outlined),
+          ),
         if (_searching)
           IconButton(
             tooltip: '清除搜索',
