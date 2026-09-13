@@ -50,4 +50,11 @@ class ReadingActivityTracker {
     for (final entry in _microsByDay.entries)
       entry.key: Duration(microseconds: entry.value),
   });
+
+  Map<String, Duration> takeDailyDurations() {
+    checkpoint();
+    final result = dailyDurations;
+    _microsByDay.clear();
+    return result;
+  }
 }
