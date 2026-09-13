@@ -1,0 +1,42 @@
+# Engineering decisions
+
+## D01: Baseline and project identity
+
+- Date: 2026-09-13; requirements: R01, H02.
+- Flutter + Dart, feature modules with MVVM and Repository boundaries; native
+  Swift/Kotlin adapters only where a platform capability requires them.
+- Initial scaffold: Flutter 3.47.4, Dart 3.13.3, Android SDK 36.0.0, JDK
+  21.0.12. `com.example.paperages.paper_ages_reader` is a temporary technical
+  identifier, not a user-approved release identity.
+- Flutter generated iOS deployment target 15.0. Android SDK floors remain
+  Flutter-template defaults until Q03 is settled.
+
+## D02: G1 is isolated risk work
+
+Before production screens, validate text layout/anchors and all four modes, PDF
+rendering/zoom, a white-listed non-JavaScript source-rule compiler, platform
+offline TTS/media sessions, and WebDAV immutable-event merge/whitelist behavior.
+No storage, PDF, parser, TTS or WebDAV dependency is selected before its
+relevant spike records maintenance, license and platform evidence.
+
+## D03: Data authority
+
+A Book UUID is independent of source and local path. One ReadingPosition
+(TextAnchor or PDFAnchor) is the authoritative book progress. SourceBinding,
+cache, layout and playback revisions prevent stale work from overwriting newer
+state. WebDAV may contain only book metadata, safe locators, bindings, anchors,
+shelf state and event metadata; it must exclude local documents, bodies, fonts,
+audio, credentials, source JSON, paths, themes and statistics.
+
+## Open inputs
+
+Q02 release identity/signing, Q03 target devices/OS floor, Q04 representative
+Legado JSON, Q05 WebDAV test service, Q06 missing visual references, and Q07
+distribution remain open and do not block G0.
+
+## Tooling verification note
+
+`flutter analyze` triggered an analysis-server LSP JSON parser failure in this
+non-ASCII workspace path. Direct `dart analyze` on the same source passed with
+no diagnostics, so source analysis has a reproducible passing command. Keep the
+Flutter-wrapper failure recorded; do not upgrade Flutter solely to mask it.

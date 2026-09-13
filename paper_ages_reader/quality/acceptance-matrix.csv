@@ -1,0 +1,3 @@
+case_id,status,evidence
+T001,In progress,"Flutter project and lockfile exist; Android/iOS builds not run"
+T002-T064,Not run,"No execution evidence"
