@@ -54,9 +54,17 @@ class LegadoSourceImporter {
 }
 
 class SourceImportReport {
-  const SourceImportReport({required this.imported, required this.failures});
+  const SourceImportReport({
+    required this.imported,
+    required this.failures,
+    this.retainedBoundUrls = const <String>[],
+  });
   final List<ImportedBookSource> imported;
   final List<SourceImportFailure> failures;
+
+  /// Configuration identities that were accepted as input but deliberately
+  /// retained their stored revision because a book currently binds to them.
+  final List<String> retainedBoundUrls;
 }
 
 class ImportedBookSource {

@@ -47,7 +47,11 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
       final text = disabled > 0
           ? '已导入 ${report.imported.length} 个书源；$disabled 个含脚本规则，已禁用。'
           : '已导入 ${report.imported.length} 个静态书源。';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      final retained = report.retainedBoundUrls.isEmpty
+          ? ''
+          : ' ${report.retainedBoundUrls.length} 个正在使用的书源保留原配置。';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$text$retained')));
     } on FormatException {
       if (mounted) {
         ScaffoldMessenger.of(

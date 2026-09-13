@@ -14,9 +14,23 @@ class LocalSourceRepository {
   Future<SourceImportReport> importJson(String json) async {
     final report = const LegadoSourceImporter().importJson(json);
     if (report.imported.isEmpty) return report;
+    final retainedBoundUrls = <String>[];
     await _database.transaction((next) {
       final sources = List<Object?>.from(next['sources']! as List);
+      final bindings = Map<String, Object?>.from(
+        next['sourceBindings'] as Map? ?? const <String, Object?>{},
+      );
       for (final source in report.imported) {
+        final isBound = bindings.values.any(
+          (row) => row is Map && row['sourceUrl'] == source.url,
+        );
+        final alreadyStored = sources.any(
+          (row) => row is Map && row['url'] == source.url,
+        );
+        if (isBound && alreadyStored) {
+          retainedBoundUrls.add(source.url);
+          continue;
+        }
         sources.removeWhere((row) => row is Map && row['url'] == source.url);
         sources.add({
           'name': source.name,
@@ -28,7 +42,11 @@ class LocalSourceRepository {
       }
       next['sources'] = sources;
     });
-    return report;
+    return SourceImportReport(
+      imported: report.imported,
+      failures: report.failures,
+      retainedBoundUrls: List.unmodifiable(retainedBoundUrls),
+    );
   }
 
   Future<StoredBookSource?> findByUrl(String url) async {

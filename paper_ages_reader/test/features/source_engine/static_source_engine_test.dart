@@ -134,6 +134,26 @@ void main() {
   });
 
   test(
+    'treats script markup and event attributes as inert HTML data',
+    () async {
+      final engine = StaticSourceEngine(
+        client: MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(
+              '<script>window.__must_not_run = true</script><div class="book" onclick="steal()"><a class="title" href="/book/1">安全正文</a><span class="author">作者</span></div>',
+            ),
+            200,
+            headers: const {'content-type': 'text/html; charset=utf-8'},
+          ),
+        ),
+      );
+      final books = await engine.search(source: staticSource, query: '安全');
+      expect(books.single.title, '安全正文');
+      expect(books.single.locator.toString(), 'https://reader.example/book/1');
+    },
+  );
+
+  test(
     'reports malformed declared UTF-8 instead of silently corrupting text',
     () async {
       final engine = StaticSourceEngine(

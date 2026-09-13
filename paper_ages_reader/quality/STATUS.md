@@ -187,3 +187,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   new query or screen disposal cancels prior generations so stale results do
   not enter the current list. Live multi-source timeout behavior is still a
   device/source acceptance gate.
+- Reimporting a source URL now preserves the currently bound configuration
+  rather than silently changing rules under a live binding. The import report
+  and UI identify retained entries; a user must use the verified source-switch
+  flow to change that source for an active book.
