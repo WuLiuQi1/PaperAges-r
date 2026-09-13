@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'features/home/presentation/home_shell.dart';
+import 'core/storage/app_database.dart';
 
 void main() => runApp(const PaperAgesApp());
 
 /// Application root; reading surfaces keep their own document themes.
 class PaperAgesApp extends StatelessWidget {
-  const PaperAgesApp({super.key});
+  const PaperAgesApp({super.key, this.database});
+  final AppDatabase? database;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -14,7 +16,7 @@ class PaperAgesApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: _theme(Brightness.light),
     darkTheme: _theme(Brightness.dark),
-    home: const HomeShell(),
+    home: HomeShell(database: database),
   );
 
   ThemeData _theme(Brightness brightness) {
@@ -34,6 +36,8 @@ class PaperAgesApp extends StatelessWidget {
             surface: background,
             surfaceContainerLow: surface,
             surfaceContainer: surface,
+            onSurface: foreground,
+            onSurfaceVariant: const Color(0xFF8E8E93),
             secondaryContainer: surface,
             onSecondaryContainer: foreground,
             primary: foreground,
@@ -45,6 +49,7 @@ class PaperAgesApp extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: false,
+        titleSpacing: 32,
         toolbarHeight: 84,
         titleTextStyle: TextStyle(
           color: foreground,

@@ -21,6 +21,29 @@ class LocalLibraryRepository {
   LocalLibraryRepository(this._database);
   final AppDatabase _database;
 
+  List<LibraryBook> get recentBooks {
+    final books = _database.books.map(_bookFromRow).toList();
+    books.sort((a, b) {
+      final aTime =
+          _database.position(a.id)?['updatedAtMillis'] as int? ??
+          a.createdAt.millisecondsSinceEpoch;
+      final bTime =
+          _database.position(b.id)?['updatedAtMillis'] as int? ??
+          b.createdAt.millisecondsSinceEpoch;
+      return bTime.compareTo(aTime);
+    });
+    return books;
+  }
+
+  String progressLabel(String bookId) {
+    final row = _database.position(bookId);
+    if (row == null) return '新书';
+    final count = row['totalBlocks'] as int?;
+    if (count == null || count <= 0) return '阅读中';
+    final index = row['blockIndex'] as int? ?? 0;
+    return '${((index + 1) / count * 100).clamp(0, 100).floor()}%';
+  }
+
   Stream<List<LibraryBook>> watchBooks() => _database.watchBooks().map((rows) {
     final books = rows.map(_bookFromRow).toList();
     books.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -84,6 +107,7 @@ class LocalLibraryRepository {
     required int graphemeOffset,
     required String contextHash,
     required int revision,
+    int? totalBlocks,
   }) => _database.transaction((next) {
     final positions = Map<String, Object?>.from(next['positions']! as Map);
     positions[bookId] = {
@@ -91,6 +115,7 @@ class LocalLibraryRepository {
       'graphemeOffset': graphemeOffset,
       'contextHash': contextHash,
       'revision': revision,
+      'totalBlocks': ?totalBlocks,
       'updatedAtMillis': DateTime.now().millisecondsSinceEpoch,
     };
     next['positions'] = positions;

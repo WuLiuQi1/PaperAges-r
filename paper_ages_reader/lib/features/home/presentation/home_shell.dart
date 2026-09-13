@@ -1,180 +1,427 @@
-import 'dart:ui';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
+import '../../../core/ui/books_navigation.dart';
 import '../../../core/storage/app_database.dart';
 import '../../library/presentation/local_library_screen.dart';
-import 'search_landing_screen.dart';
+import '../../library/presentation/book_cover.dart';
+import '../../library/data/local_library_repository.dart';
+import '../../library/domain/library_book.dart';
+import '../../reader_document/presentation/reader_document_screen.dart';
+import '../../reader_document/presentation/pdf_reader_screen.dart';
 import '../../statistics/data/reading_statistics_repository.dart';
 import '../../settings/presentation/settings_screen.dart';
+import 'search_landing_screen.dart';
 
-/// Top-level three-tab shell specified by D02. Individual tabs retain their
-/// widget state with IndexedStack rather than recreating searches on each tap.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
-
+  const HomeShell({super.key, this.database});
+  final AppDatabase? database;
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
   var _index = 0;
-
   @override
   Widget build(BuildContext context) => Scaffold(
+    extendBody: true,
     body: IndexedStack(
       index: _index,
       children: [
-        _HomeDashboard(onLibrary: () => setState(() => _index = 1)),
-        const LocalLibraryScreen(),
-        const SearchLandingScreen(),
+        _HomeDashboard(
+          active: _index == 0,
+          database: widget.database,
+          onLibrary: () => setState(() => _index = 1),
+        ),
+        LocalLibraryScreen(
+          repository: widget.database == null
+              ? null
+              : LocalLibraryRepository(widget.database!),
+        ),
+        SearchLandingScreen(active: _index == 2, database: widget.database),
       ],
     ),
-    bottomNavigationBar: SafeArea(
-      minimum: const EdgeInsets.fromLTRB(32, 8, 32, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: NavigationBar(
-            height: 64,
-            labelTextStyle: const WidgetStatePropertyAll(
-              TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainer
-                .withValues(alpha: .88),
-            indicatorColor: Theme.of(context).colorScheme.onSurface
-                .withValues(alpha: .08),
-            selectedIndex: _index,
-            onDestinationSelected: (value) => setState(() => _index = value),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(CupertinoIcons.house),
-                selectedIcon: Icon(CupertinoIcons.house_fill),
-                label: '主页',
-              ),
-              NavigationDestination(
-                icon: Icon(CupertinoIcons.book),
-                selectedIcon: Icon(CupertinoIcons.book_fill),
-                label: '书库',
-              ),
-              NavigationDestination(
-                icon: Icon(CupertinoIcons.search),
-                label: '搜索',
-              ),
-            ],
+    bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0
+        ? null
+        : BooksNavigation(
+            index: _index,
+            onChanged: (value) {
+              FocusScope.of(context).unfocus();
+              setState(() => _index = value);
+            },
           ),
-        ),
-      ),
-    ),
   );
 }
 
-class _HomeDashboard extends StatelessWidget {
-  const _HomeDashboard({required this.onLibrary});
+class _HomeDashboard extends StatefulWidget {
+  const _HomeDashboard({
+    required this.onLibrary,
+    required this.active,
+    this.database,
+  });
+  final AppDatabase? database;
   final VoidCallback onLibrary;
-
+  final bool active;
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('主页'),
-      actions: [
-        IconButton(
-          tooltip: '设置',
-          icon: const Icon(CupertinoIcons.person_crop_circle, size: 32),
-          onPressed: () => Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+  State<_HomeDashboard> createState() => _HomeDashboardState();
+}
+
+class _HomeDashboardState extends State<_HomeDashboard> {
+  Future<AppDatabase> _load() => widget.database == null
+      ? AppDatabase.defaults()
+      : Future.value(widget.database);
+  late Future<AppDatabase> _future = _load();
+  @override
+  void didUpdateWidget(_HomeDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _future = _load();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() => _future = _load());
+  }
+
+  Future<void> _read(
+    LibraryBook book,
+    LocalLibraryRepository repository,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => book.kind == LibraryBookKind.pdf
+            ? PdfReaderScreen(book: book)
+            : ReaderDocumentScreen(book: book, repository: repository),
+      ),
+    );
+    _refresh();
+  }
+
+  Future<void> _settings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: .94,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: const SettingsScreen(),
         ),
-        const SizedBox(width: 12),
-      ],
-    ),
-    body: FutureBuilder<AppDatabase>(
-      future: AppDatabase.defaults(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final database = snapshot.data!;
-        final statistics = ReadingStatisticsRepository(database);
-        final today = DateTime.now().toIso8601String().substring(0, 10);
-        final value = statistics.daily[today] ?? Duration.zero;
-        final goal = statistics.dailyGoal;
-        final books = database.books;
-        return ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text('继续阅读', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 10),
-            Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 14,
-                ),
-                onTap: onLibrary,
-                leading: const Icon(Icons.menu_book_outlined),
-                title: Text(
-                  books.isEmpty
-                      ? '还没有书籍'
-                      : books.first['title'] as String? ?? '最近阅读',
-                ),
-                subtitle: Text(books.isEmpty ? '前往书库导入 TXT 或 PDF' : '在书库中继续阅读'),
-              ),
-            ),
-            const SizedBox(height: 44),
-            Text(
-              '阅读目标',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 10),
-            const Text('每天留一点时间，读你喜欢的书。', textAlign: TextAlign.center),
-            const SizedBox(height: 32),
-            SizedBox(
-              height: 210,
-              child: CustomPaint(
-                painter: _GoalArc(
-                  progress: (value.inMicroseconds / goal.inMicroseconds).clamp(
-                    0.0,
-                    1.0,
-                  ),
-                  track: Theme.of(context).colorScheme.surfaceContainer,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 32),
-                      const Text('今日阅读进度'),
-                      Text(
-                        '${value.inMinutes}:${(value.inSeconds % 60).toString().padLeft(2, '0')}',
-                        style: const TextStyle(
-                          fontSize: 64,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -2,
-                        ),
-                      ),
-                      Text('目标 ${goal.inMinutes} 分钟'),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.tonal(
-              onPressed: onLibrary,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-              ),
-              child: Text(books.isEmpty ? '前往书库' : '继续阅读'),
+      ),
+    );
+    _refresh();
+  }
+
+  Widget _card(
+    LibraryBook book,
+    LocalLibraryRepository repository, {
+    bool highlighted = false,
+  }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = highlighted
+        ? Colors.white
+        : Theme.of(context).colorScheme.onSurface;
+    return GestureDetector(
+      onTap: () => _read(book, repository),
+      onLongPress: () =>
+          showBookActions(context, book, () => _read(book, repository)),
+      child: Container(
+        width: MediaQuery.sizeOf(context).width * .62,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: highlighted
+              ? null
+              : (dark ? const Color(0xFF252525) : Colors.white),
+          gradient: highlighted
+              ? const LinearGradient(
+                  colors: [Color(0xFF17445C), Color(0xFF7C4918)],
+                )
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .10),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
             ),
           ],
-        );
-      },
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 44, child: BookCover(book: book)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    book.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${book.kind == LibraryBookKind.pdf ? 'PDF' : '图书'} · ${repository.progressLabel(book.id)}',
+                    style: TextStyle(
+                      color: foreground.withValues(alpha: .65),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 32,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                tooltip: '${book.title}的更多操作',
+                icon: Icon(
+                  Icons.more_horiz,
+                  color: foreground.withValues(alpha: .7),
+                  size: 20,
+                ),
+                onPressed: () => showBookActions(
+                  context,
+                  book,
+                  () => _read(book, repository),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _section(String title, Widget child) => Container(
+    width: double.infinity,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Theme.of(context).colorScheme.surface,
+          Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF080808)
+              : const Color(0xFFF0F0F0),
+        ],
+      ),
     ),
+    padding: const EdgeInsets.fromLTRB(32, 24, 32, 28),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 16),
+        child,
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<AppDatabase>(
+    future: _future,
+    builder: (context, snapshot) {
+      final database = snapshot.data;
+      final statistics = database == null
+          ? null
+          : ReadingStatisticsRepository(database);
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final value = statistics?.daily[today] ?? Duration.zero;
+      final goal =
+          statistics?.dailyGoal ?? ReadingStatisticsRepository.defaultGoal;
+      final repository = database == null
+          ? null
+          : LocalLibraryRepository(database);
+      final books = repository?.recentBooks ?? <LibraryBook>[];
+      final previous = books
+          .skip(1)
+          .where((book) => repository!.progressLabel(book.id) != '新书')
+          .take(3)
+          .toList();
+      final ratio = goal.inMicroseconds <= 0
+          ? 0.0
+          : (value.inMicroseconds / goal.inMicroseconds).clamp(0.0, 1.0);
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('主页'),
+          actions: [
+            IconButton(
+              tooltip: '阅读目标',
+              onPressed: _settings,
+              icon: SizedBox.square(
+                dimension: 38,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      value: ratio,
+                      strokeWidth: 3,
+                      backgroundColor: const Color(0xFFBCEBF1),
+                      color: const Color(0xFF00ADD0),
+                    ),
+                    Text(
+                      '${value.inMinutes}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF00ADD0),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '设置',
+              onPressed: _settings,
+              icon: const Icon(CupertinoIcons.person_crop_circle, size: 40),
+            ),
+            const SizedBox(width: 22),
+          ],
+        ),
+        body: snapshot.hasError
+            ? const Center(child: Text('无法读取阅读记录，请稍后重试。'))
+            : database == null
+            ? const Center(child: CupertinoActivityIndicator())
+            : ListView(
+                padding: const EdgeInsets.only(bottom: 130),
+                children: [
+                  _section(
+                    '继续阅读',
+                    books.isEmpty
+                        ? GestureDetector(
+                            onTap: widget.onLibrary,
+                            child: Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(CupertinoIcons.book, size: 30),
+                                  SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      '还没有书籍\n前往书库导入 TXT 或 PDF',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        height: 1.6,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : _card(books.first, repository!, highlighted: true),
+                  ),
+                  if (previous.isNotEmpty)
+                    _section(
+                      '之前读过',
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final book in previous)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _card(book, repository!),
+                            ),
+                        ],
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(32, 36, 32, 0),
+                    child: Column(
+                      children: [
+                        const Text(
+                          '阅读目标',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '坚持每天阅读，提升你的数据，以激励你读完更多图书。',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          height:
+                              (MediaQuery.sizeOf(context).width - 64) / 2 + 40,
+                          child: CustomPaint(
+                            painter: _GoalArc(
+                              progress: ratio,
+                              track: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainer,
+                              color: const Color(0xFF00ADD0),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(height: 32),
+                                  const Text(
+                                    '今日阅读进度',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${value.inMinutes}:${(value.inSeconds % 60).toString().padLeft(2, '0')}',
+                                    style: const TextStyle(
+                                      fontSize: 64,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: -2,
+                                    ),
+                                  ),
+                                  Text(
+                                    '（目标 ${goal.inMinutes} 分钟）',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        FilledButton.tonal(
+                          onPressed: books.isEmpty
+                              ? widget.onLibrary
+                              : () => _read(books.first, repository!),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                          ),
+                          child: Text(books.isEmpty ? '前往书库' : '继续阅读'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      );
+    },
   );
 }
 

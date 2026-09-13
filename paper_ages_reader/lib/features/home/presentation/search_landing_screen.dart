@@ -2,20 +2,42 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/storage/app_database.dart';
-import '../../library/presentation/local_library_screen.dart';
+import '../../library/data/local_library_repository.dart';
+import '../../library/domain/library_book.dart';
+import '../../library/presentation/book_cover.dart';
+import '../../reader_document/presentation/reader_document_screen.dart';
+import '../../reader_document/presentation/pdf_reader_screen.dart';
 import '../../source_engine/application/legado_source_importer.dart';
 import '../../source_engine/data/local_source_repository.dart';
 import '../../source_engine/presentation/all_sources_search_screen.dart';
 import '../../source_engine/presentation/source_management_screen.dart';
 
 class SearchLandingScreen extends StatefulWidget {
-  const SearchLandingScreen({super.key});
+  const SearchLandingScreen({super.key, this.active = true, this.database});
+  final AppDatabase? database;
+  final bool active;
   @override
   State<SearchLandingScreen> createState() => _SearchLandingScreenState();
 }
 
 class _SearchLandingScreenState extends State<SearchLandingScreen> {
+  final _controller = TextEditingController();
+  Future<AppDatabase> _load() => widget.database == null
+      ? AppDatabase.defaults()
+      : Future.value(widget.database);
+  late Future<AppDatabase> _database = _load();
   bool _loading = false;
+  @override
+  void didUpdateWidget(SearchLandingScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _database = _load();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   Future<void> _online() async {
     setState(() => _loading = true);
@@ -25,19 +47,14 @@ class _SearchLandingScreenState extends State<SearchLandingScreen> {
           .watchSources()
           .first;
       if (!mounted) return;
-      if (!sources.any((source) => source.state == SourceImportState.ready)) {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const SourceManagementScreen(),
-          ),
-        );
-      } else {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => AllSourcesSearchScreen(sources: sources),
-          ),
-        );
-      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              sources.any((source) => source.state == SourceImportState.ready)
+              ? AllSourcesSearchScreen(sources: sources)
+              : const SourceManagementScreen(),
+        ),
+      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -53,58 +70,128 @@ class _SearchLandingScreenState extends State<SearchLandingScreen> {
     appBar: AppBar(
       title: const Text('搜索'),
       actions: [
-        IconButton(
-          tooltip: '书源管理',
-          icon: const Icon(CupertinoIcons.slider_horizontal_3),
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const SourceManagementScreen(),
+        PopupMenuButton<String>(
+          tooltip: '搜索选项',
+          icon: const Icon(CupertinoIcons.ellipsis_circle),
+          onSelected: (value) {
+            if (value == 'online') {
+              if (!_loading) _online();
+            } else {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SourceManagementScreen(),
+                ),
+              );
+            }
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'online',
+              enabled: !_loading,
+              child: const Text('搜索在线书源'),
             ),
-          ),
+            const PopupMenuItem(value: 'sources', child: Text('书源管理')),
+          ],
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 22),
       ],
     ),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: Column(
       children: [
-        Text('查找你想读的书', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 20),
-        Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 6, 32, 0),
+          child: CupertinoSearchTextField(
+            key: const Key('main-library-search'),
+            controller: _controller,
+            placeholder: '你的书库',
+            style: TextStyle(
+              fontSize: 17,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
-            leading: const Icon(CupertinoIcons.book),
-            title: const Text('搜索书库'),
-            subtitle: const Text('查找已导入的本地书籍'),
-            trailing: const Icon(CupertinoIcons.chevron_right, size: 16),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const LocalLibraryScreen(initialSearch: true),
-              ),
-            ),
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF232323)
+                : const Color(0xFFEEEEF0),
+            borderRadius: BorderRadius.circular(26),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            onChanged: (_) => setState(() {}),
+            onSuffixTap: () => setState(_controller.clear),
           ),
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
-            ),
-            leading: const Icon(CupertinoIcons.globe),
-            title: const Text('搜索在线书源'),
-            subtitle: const Text('首次使用请导入 JSON 书源'),
-            trailing: _loading
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(CupertinoIcons.chevron_right, size: 16),
-            onTap: _loading ? null : _online,
-          ),
+        Expanded(
+          child: _controller.text.trim().isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.search,
+                        size: 44,
+                        color: Color(0xFFC5C5C7),
+                      ),
+                      SizedBox(height: 28),
+                      Text(
+                        '搜索书库',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 100),
+                    ],
+                  ),
+                )
+              : FutureBuilder<AppDatabase>(
+                  future: _database,
+                  builder: (context, ready) {
+                    if (ready.hasError) {
+                      return const Center(child: Text('无法读取书库'));
+                    }
+                    if (!ready.hasData) {
+                      return const Center(child: CupertinoActivityIndicator());
+                    }
+                    final repository = LocalLibraryRepository(ready.data!);
+                    final query = _controller.text.trim().toLowerCase();
+                    final books = repository.recentBooks
+                        .where(
+                          (book) => book.title.toLowerCase().contains(query),
+                        )
+                        .toList();
+                    if (books.isEmpty) {
+                      return const Center(child: Text('没有找到相关书籍'));
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(32, 26, 32, 120),
+                      itemCount: books.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 20),
+                      itemBuilder: (context, index) {
+                        final book = books[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: SizedBox(
+                            width: 42,
+                            child: BookCover(book: book),
+                          ),
+                          title: Text(
+                            book.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(repository.progressLabel(book.id)),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => book.kind == LibraryBookKind.pdf
+                                  ? PdfReaderScreen(book: book)
+                                  : ReaderDocumentScreen(
+                                      book: book,
+                                      repository: repository,
+                                    ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
         ),
       ],
     ),

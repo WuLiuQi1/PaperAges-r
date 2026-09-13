@@ -16,7 +16,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('设置')),
+    backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+    appBar: AppBar(
+      title: const Text(
+        '设置',
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      ),
+      toolbarHeight: 70,
+      centerTitle: true,
+      automaticallyImplyLeading: false,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      actions: [
+        IconButton(
+          tooltip: '关闭设置',
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        const SizedBox(width: 12),
+      ],
+    ),
     body: FutureBuilder<AppDatabase>(
       future: _database,
       builder: (context, snapshot) {
@@ -29,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             Card(
+              color: Theme.of(context).colorScheme.surface,
               child: ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('每日阅读目标'),
@@ -37,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             Card(
+              color: Theme.of(context).colorScheme.surface,
               child: ListTile(
                 leading: const Icon(Icons.cloud_outlined),
                 title: const Text('WebDAV 同步'),

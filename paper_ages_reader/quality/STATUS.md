@@ -2,6 +2,17 @@
 
 Last updated: 2026-09-13
 
+## Apple Books alignment follow-up (1.0.0+3)
+
+- The supplementary `新建文件夹 (2)` images include LIGHT references, not just dark: `f0516b4f441a9401f8ddd066083de639.png` (search), `ebeee1d04784c43a806eb40b6239298b.png` (home), `06492ff3badfe220ed17b837a7350e16.png` (collection sheet), `7e7d51c3921e9b16910ebd8537ffac48.png` (settings), plus reader/theme images. Earlier claims that all light appearance lacked supplied reference were incomplete.
+- Main tabs now use a 72%-viewport floating capsule (capped for large devices), whole-tab selection, neutral colors, blur/border, and a book-spine glyph. Home uses reference-aligned section gradients, compact reading cards and a goal arc; tapping a populated continue card opens its actual local book.
+- Library uses two independent 0.70-aspect title covers, persisted progress, per-book menus, grid/list switching and book count. Import moves to the overflow menu when populated, preventing overlap with floating navigation; empty state retains direct import. TXT cover artwork is absent by format, so title covers are explicit placeholders, not replicas of reference book jackets.
+- Search uses the supplied rounded input/centered empty state, filters actual local books and opens results. Online source search/import remains reachable from search options. User search text survives tab switches; re-entering reloads local metadata.
+- Existing persisted positions remain readable; optional `totalBlocks` enables a real block-position percentage without inventing a percentage for older records. Recency derives from saved position timestamps; unread books are excluded from the previously-read section.
+- 390px light and 320px dark widget scenarios cover populated tabs, search filtering, menus, grid/list, and keyboard/navigation visibility. Review PNGs are under ignored `build/ui-review`; test fonts are not a pixel-perfect iOS font reference. Native typography, cover art, blur motion, all reader/theme sheets and remaining U04-U12 are NOT accepted as identical.
+- Prior import fix: commit `3d7f8b3`, pushed successfully after one TLS failure. Its Android Debug APK built successfully. This follow-up's final checks/build are recorded in the completion report.
+- Follow-up checks: `dart analyze` clean; all 87 tests passed; after the last narrow-screen goal geometry adjustment, both 390-light/320-dark shell scenarios passed again. `flutter build apk --debug --no-pub` succeeded (29.3s), artifact `build/app/outputs/flutter-apk/app-debug.apk`, version 1.0.0+3. iOS CI/device validation of this revision remains unverified.
+
 | Stage | Status | Evidence / limitation |
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |

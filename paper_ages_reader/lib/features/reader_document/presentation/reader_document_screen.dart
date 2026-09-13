@@ -120,6 +120,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       graphemeOffset: 0,
       contextHash: anchor.contextHash,
       revision: _revision,
+      totalBlocks: document.blocks.length,
     );
   }
 
