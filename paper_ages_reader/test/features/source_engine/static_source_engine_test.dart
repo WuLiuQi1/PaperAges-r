@@ -108,4 +108,43 @@ void main() {
       throwsA(isA<CancelledFailure>()),
     );
   });
+
+  test('deduplicates paged chapters and stops a pagination loop', () async {
+    var calls = 0;
+    final source = Map<String, Object?>.from(staticSource)
+      ..['ruleToc'] = {
+        'chapterList': '#toc a.chapter',
+        'chapterName': 'text',
+        'chapterUrl': 'href',
+        'nextTocUrl': 'a.next@href',
+      };
+    final engine = StaticSourceEngine(
+      limits: const SourceEngineLimits(maxPages: 10),
+      client: MockClient((request) async {
+        calls++;
+        if (request.url.path == '/toc') {
+          return http.Response.bytes(
+            utf8.encode(
+              '<div id="toc"><a class="chapter" href="/chapter/1">一</a></div><a class="next" href="/toc-2">next</a>',
+            ),
+            200,
+            headers: const {'content-type': 'text/html; charset=utf-8'},
+          );
+        }
+        return http.Response.bytes(
+          utf8.encode(
+            '<div id="toc"><a class="chapter" href="/chapter/1">一</a><a class="chapter" href="/chapter/2">二</a></div><a class="next" href="/toc">loop</a>',
+          ),
+          200,
+          headers: const {'content-type': 'text/html; charset=utf-8'},
+        );
+      }),
+    );
+    final chapters = await engine.chapters(
+      source: source,
+      tocUrl: Uri.parse('https://reader.example/toc'),
+    );
+    expect(chapters.map((chapter) => chapter.title), ['一', '二']);
+    expect(calls, 2);
+  });
 }

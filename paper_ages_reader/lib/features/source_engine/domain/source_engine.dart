@@ -150,30 +150,40 @@ class StaticSourceEngine {
     final rules = source['ruleToc'];
     if (rules is! Map)
       throw const UnsupportedRuleFailure('ruleToc is required');
-    final document = await _getHtml(tocUrl, cancellationToken);
     final selector = _rule(rules, 'chapterList');
     if (selector == null)
       throw const UnsupportedRuleFailure('ruleToc.chapterList is required');
-    return List<SourceChapter>.from(
-      _select(document, selector)
-          .asMap()
-          .entries
-          .map((entry) {
-            final title =
-                _value(entry.value, _rule(rules, 'chapterName')) ?? '';
-            final url = _value(entry.value, _rule(rules, 'chapterUrl')) ?? '';
-            return SourceChapter(
-              key: '${entry.key}:${url.hashCode}',
-              title: title,
-              locator: _resolve(tocUrl, url),
-              ordinal: entry.key,
-            );
-          })
-          .where(
-            (chapter) => chapter.title.isNotEmpty && chapter.locator.hasScheme,
-          )
-          .toList(growable: false),
-    );
+    final chapters = <SourceChapter>[];
+    final seenPages = <String>{};
+    final seenChapterUrls = <String>{};
+    var page = tocUrl;
+    for (var pageIndex = 0; pageIndex < limits.maxPages; pageIndex++) {
+      cancellationToken?.throwIfCancelled();
+      if (!seenPages.add(page.toString())) break;
+      final document = await _getHtml(page, cancellationToken);
+      for (final entry in _select(document, selector).asMap().entries) {
+        final title = _value(entry.value, _rule(rules, 'chapterName')) ?? '';
+        final url = _value(entry.value, _rule(rules, 'chapterUrl')) ?? '';
+        final locator = _resolve(page, url);
+        if (title.isEmpty ||
+            !locator.hasScheme ||
+            !seenChapterUrls.add(locator.toString())) {
+          continue;
+        }
+        chapters.add(
+          SourceChapter(
+            key: '${chapters.length}:${locator.toString().hashCode}',
+            title: title,
+            locator: locator,
+            ordinal: chapters.length,
+          ),
+        );
+      }
+      final next = _value(document, _rule(rules, 'nextTocUrl'));
+      if (next == null || next.isEmpty) break;
+      page = _resolve(page, next);
+    }
+    return List.unmodifiable(chapters);
   }
 
   Future<NetworkBookDetails> details({
@@ -218,11 +228,25 @@ class StaticSourceEngine {
     final rules = source['ruleContent'];
     if (rules is! Map)
       throw const UnsupportedRuleFailure('ruleContent is required');
-    final document = await _getHtml(chapterUrl, cancellationToken);
-    final result = _value(document, _rule(rules, 'content'));
-    if (result == null || result.trim().isEmpty)
-      throw const ParseFailure('Content rule returned no text');
-    return result.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final pages = <String>[];
+    final seenPages = <String>{};
+    var page = chapterUrl;
+    for (var pageIndex = 0; pageIndex < limits.maxPages; pageIndex++) {
+      cancellationToken?.throwIfCancelled();
+      if (!seenPages.add(page.toString())) break;
+      final document = await _getHtml(page, cancellationToken);
+      final result = _value(document, _rule(rules, 'content'));
+      if (result == null || result.trim().isEmpty) {
+        if (pages.isEmpty)
+          throw const ParseFailure('Content rule returned no text');
+        break;
+      }
+      pages.add(result.replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
+      final next = _value(document, _rule(rules, 'nextContentUrl'));
+      if (next == null || next.isEmpty) break;
+      page = _resolve(page, next);
+    }
+    return pages.join('\n\n');
   }
 
   void _ensureSafe(Map<String, Object?> source) {

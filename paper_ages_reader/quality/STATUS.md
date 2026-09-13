@@ -7,7 +7,7 @@ Last updated: 2026-09-13
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
-| G3 online and offline | In progress | Persistent Legado JSON import and source-management UI exist. Script-bearing rules import visibly but stay disabled; no supported-rule network engine, search, catalogue or download yet. |
+| G3 online and offline | In progress — implementation assembled; acceptance gates open | Safe static sources support search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching. A compatible live source plus Android device validation are still required before this stage can be accepted. |
 | G4-G6 | Not started | No production system/sync completion, device validation or distribution artifact. |
 
 ## G0 evidence
@@ -132,7 +132,9 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   a timeout, relative-link resolution and pre-request rejection of dynamic
   rules. Its mocked HTTP fixture covers the full static path plus script
   rejection and cancellation. It does not claim XPath/JSONPath, rule
-  expressions, pagination, downloading or any live source compatibility.
+  expressions or live source compatibility. Catalogue and content pagination
+  stop at a strict page cap and de-duplicate visited URLs, so cyclic static
+  sources cannot loop indefinitely.
 - Ready static sources now open a search UI, then a detail/catalogue route and
   a readable chapter route. Each chapter checks a source/version/locator-bound
   cache first, writes new content through a `.part` file and keeps imported
@@ -142,4 +144,21 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - `SourceSwitchService` has an explicit verified-target / compare-and-swap
   contract: an empty or stale candidate cannot overwrite the current readable
   binding. Focused tests cover stale and unverified switch rejection. The
-  durable binding UI and cross-source chapter-mapping chooser remain pending.
+  durable binding UI requires an explicit source, target URL and stable chapter
+  key, reads the target body first, then commits a revision-checked atomic
+  replacement. It never guesses a mapping by title or ordinal.
+- Search detail pages can persist a network book and create a download-all
+  task. Tasks retain only URL/key metadata, save progress after each
+  cache-verified chapter, preserve completed chapters on cancellation and
+  resume unfinished work on retry. A source-revision mismatch cancels the old
+  task rather than mixing content from different sources. The library exposes
+  separate network-shelf and download-task routes.
+- `dart analyze` and the complete Flutter test suite pass after these changes.
+  Mocked coverage now includes paged catalogue de-duplication and loop exit,
+  task payload durability, source-rule rejection, cancellation, cache
+  isolation and source-switch stale/empty rejection. This is not a live-source
+  or physical-device verification.
+- A post-G3 `flutter build apk --debug` attempt reached Gradle resource/DEX
+  work but exited without producing an APK or a diagnostic terminal error.
+  It is therefore **not** build evidence and must be rerun from VS Code or a
+  visible terminal before Android acceptance.

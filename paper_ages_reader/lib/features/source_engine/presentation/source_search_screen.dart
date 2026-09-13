@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../../core/storage/app_database.dart';
 import '../../downloads/data/chapter_cache.dart';
+import '../../downloads/data/persistent_download_task_repository.dart';
+import '../../downloads/application/download_manager.dart';
+import '../../downloads/domain/download_task.dart';
 import '../data/local_source_repository.dart';
 import '../data/network_shelf_repository.dart';
+import '../data/persistent_source_binding_store.dart';
+import '../domain/source_switch_service.dart';
 import '../domain/source_engine.dart';
 
 class SourceSearchScreen extends StatefulWidget {
@@ -153,6 +158,56 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
     }
   }
 
+  Future<void> _downloadAll(List<SourceChapter> chapters) async {
+    if (chapters.isEmpty) return;
+    final database = await AppDatabase.defaults();
+    final bookId = '${widget.source.url}|${widget.book.locator}';
+    final bindings = PersistentSourceBindingStore(database);
+    final existing = bindings.bindingFor(bookId);
+    final expected = existing?.revision ?? 0;
+    final changed = await bindings.replaceIfCurrent(
+      expectedRevision: expected,
+      next: SourceBinding(
+        bookId: bookId,
+        sourceUrl: widget.source.url,
+        locator: widget.book.locator,
+        chapterKey: existing?.chapterKey ?? chapters.first.key,
+        revision: expected + 1,
+      ),
+    );
+    if (changed is SourceSwitchRejected) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(changed.reason)));
+      return;
+    }
+    final binding = (changed as SourceSwitchCommitted).binding;
+    final task = DownloadTask(
+      id: '${bookId.hashCode}-${DateTime.now().microsecondsSinceEpoch}',
+      bookId: bookId,
+      sourceUrl: widget.source.url,
+      bindingRevision: binding.revision,
+      chapterKeys: chapters
+          .map((chapter) => chapter.key)
+          .toList(growable: false),
+      chapterUrls: {
+        for (final chapter in chapters) chapter.key: chapter.locator.toString(),
+      },
+      completedKeys: const {},
+      status: DownloadStatus.queued,
+    );
+    final repository = PersistentDownloadTaskRepository(database);
+    await repository.upsert(task);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('下载任务已创建，正在下载。')));
+    await DownloadManager(repository, await ChapterCache.defaults()).run(
+      taskId: task.id,
+      currentBindingRevision: binding.revision,
+      source: widget.source.configuration,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -180,17 +235,22 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
         if (snapshot.hasError) return Center(child: Text(_error ?? '目录加载失败'));
         final chapters = snapshot.data!;
         return ListView.builder(
-          itemCount: chapters.length,
+          itemCount: chapters.length + 1,
           itemBuilder: (context, index) => ListTile(
-            title: Text(chapters[index].title),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => NetworkChapterScreen(
-                  source: widget.source,
-                  chapter: chapters[index],
-                ),
-              ),
-            ),
+            title: index == 0
+                ? const Text('下载全部章节')
+                : Text(chapters[index - 1].title),
+            leading: index == 0 ? const Icon(Icons.download_outlined) : null,
+            onTap: index == 0
+                ? () => _downloadAll(chapters)
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => NetworkChapterScreen(
+                        source: widget.source,
+                        chapter: chapters[index - 1],
+                      ),
+                    ),
+                  ),
           ),
         );
       },

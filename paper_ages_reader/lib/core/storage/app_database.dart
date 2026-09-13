@@ -23,12 +23,14 @@ class AppDatabase {
   }
 
   static Map<String, Object?> _empty() => {
-    'schemaVersion': 3,
+    'schemaVersion': 4,
     'books': <Object?>[],
     'positions': <String, Object?>{},
     'preferences': <String, Object?>{},
     'sources': <Object?>[],
     'networkBooks': <Object?>[],
+    'sourceBindings': <String, Object?>{},
+    'downloadTasks': <Object?>[],
   };
 
   Future<void> _open() async {
@@ -40,15 +42,24 @@ class AppDatabase {
     _data = Map<String, Object?>.from(decoded);
     final version = _data['schemaVersion'];
     if (version == 1) {
-      _data['schemaVersion'] = 3;
+      _data['schemaVersion'] = 4;
       _data['sources'] = <Object?>[];
       _data['networkBooks'] = <Object?>[];
+      _data['sourceBindings'] = <String, Object?>{};
+      _data['downloadTasks'] = <Object?>[];
       await _write(_data);
     } else if (version == 2) {
-      _data['schemaVersion'] = 3;
+      _data['schemaVersion'] = 4;
       _data['networkBooks'] = <Object?>[];
+      _data['sourceBindings'] = <String, Object?>{};
+      _data['downloadTasks'] = <Object?>[];
       await _write(_data);
-    } else if (version != 3) {
+    } else if (version == 3) {
+      _data['schemaVersion'] = 4;
+      _data['sourceBindings'] = <String, Object?>{};
+      _data['downloadTasks'] = <Object?>[];
+      await _write(_data);
+    } else if (version != 4) {
       throw const FormatException('Unsupported local library database version');
     }
   }
@@ -66,6 +77,11 @@ class AppDatabase {
   Stream<List<Map<String, Object?>>> watchNetworkBooks() async* {
     yield networkBooks;
     yield* _changes.stream.map((_) => networkBooks);
+  }
+
+  Stream<List<Map<String, Object?>>> watchDownloadTasks() async* {
+    yield downloadTasks;
+    yield* _changes.stream.map((_) => downloadTasks);
   }
 
   List<Map<String, Object?>> get books => List.unmodifiable(
@@ -86,6 +102,19 @@ class AppDatabase {
         .map((row) => Map<String, Object?>.from(row)),
   );
 
+  List<Map<String, Object?>> get downloadTasks => List.unmodifiable(
+    ((_data['downloadTasks'] as List<Object?>?) ?? const <Object?>[])
+        .whereType<Map>()
+        .map((row) => Map<String, Object?>.from(row)),
+  );
+
+  Map<String, Object?>? sourceBinding(String bookId) {
+    final raw = Map<String, Object?>.from(
+      (_data['sourceBindings'] as Map?) ?? const <String, Object?>{},
+    )[bookId];
+    return raw is Map ? Map<String, Object?>.from(raw) : null;
+  }
+
   Map<String, Object?>? position(String bookId) {
     final raw = Map<String, Object?>.from(_data['positions']! as Map)[bookId];
     return raw is Map ? Map<String, Object?>.from(raw) : null;
@@ -105,6 +134,12 @@ class AppDatabase {
       )
       ..['sources'] = List<Object?>.from(_data['sources']! as List)
       ..['networkBooks'] = List<Object?>.from(_data['networkBooks']! as List);
+    next['sourceBindings'] = Map<String, Object?>.from(
+      (_data['sourceBindings'] as Map?) ?? const <String, Object?>{},
+    );
+    next['downloadTasks'] = List<Object?>.from(
+      (_data['downloadTasks'] as List?) ?? const <Object?>[],
+    );
     change(next);
     await _write(next);
     _data = next;

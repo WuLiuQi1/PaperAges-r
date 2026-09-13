@@ -5,8 +5,11 @@ void main() {
   const machine = DownloadTaskStateMachine();
   DownloadTask task() => const DownloadTask(
     id: 'task',
+    bookId: 'book',
+    sourceUrl: 'https://example.test/source',
     bindingRevision: 2,
     chapterKeys: ['a', 'b'],
+    chapterUrls: {'a': 'https://example.test/a', 'b': 'https://example.test/b'},
     completedKeys: {},
     status: DownloadStatus.queued,
   );
@@ -26,5 +29,12 @@ void main() {
           .status,
       DownloadStatus.completed,
     );
+  });
+  test('durable task payload retains URLs and completed chapter keys', () {
+    final saved = task().toJson();
+    final restored = DownloadTask.fromJson(saved);
+    expect(restored.chapterUrls['a'], 'https://example.test/a');
+    expect(restored.completedKeys, isEmpty);
+    expect(restored.sourceUrl, 'https://example.test/source');
   });
 }
