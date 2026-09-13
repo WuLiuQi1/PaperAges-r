@@ -2,8 +2,10 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/storage/app_database.dart';
 import '../../downloads/data/chapter_cache.dart';
 import '../data/local_source_repository.dart';
+import '../data/network_shelf_repository.dart';
 import '../domain/source_engine.dart';
 
 class SourceSearchScreen extends StatefulWidget {
@@ -153,7 +155,23 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.book.title)),
+    appBar: AppBar(
+      title: Text(widget.book.title),
+      actions: [
+        IconButton(
+          tooltip: '加入书架',
+          icon: const Icon(Icons.library_add_outlined),
+          onPressed: () async {
+            final database = await AppDatabase.defaults();
+            await NetworkShelfRepository(database)
+                .add(book: widget.book, sourceUrl: widget.source.url);
+            if (!mounted) return;
+            ScaffoldMessenger.of(this.context)
+                .showSnackBar(const SnackBar(content: Text('已加入网络书架')));
+          },
+        ),
+      ],
+    ),
     body: FutureBuilder<List<SourceChapter>>(
       future: _chapters,
       builder: (context, snapshot) {

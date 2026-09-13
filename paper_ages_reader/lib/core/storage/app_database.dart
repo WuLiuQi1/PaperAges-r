@@ -23,11 +23,12 @@ class AppDatabase {
   }
 
   static Map<String, Object?> _empty() => {
-    'schemaVersion': 2,
+    'schemaVersion': 3,
     'books': <Object?>[],
     'positions': <String, Object?>{},
     'preferences': <String, Object?>{},
     'sources': <Object?>[],
+    'networkBooks': <Object?>[],
   };
 
   Future<void> _open() async {
@@ -39,10 +40,15 @@ class AppDatabase {
     _data = Map<String, Object?>.from(decoded);
     final version = _data['schemaVersion'];
     if (version == 1) {
-      _data['schemaVersion'] = 2;
+      _data['schemaVersion'] = 3;
       _data['sources'] = <Object?>[];
+      _data['networkBooks'] = <Object?>[];
       await _write(_data);
-    } else if (version != 2) {
+    } else if (version == 2) {
+      _data['schemaVersion'] = 3;
+      _data['networkBooks'] = <Object?>[];
+      await _write(_data);
+    } else if (version != 3) {
       throw const FormatException('Unsupported local library database version');
     }
   }
@@ -57,6 +63,11 @@ class AppDatabase {
     yield* _changes.stream.map((_) => sources);
   }
 
+  Stream<List<Map<String, Object?>>> watchNetworkBooks() async* {
+    yield networkBooks;
+    yield* _changes.stream.map((_) => networkBooks);
+  }
+
   List<Map<String, Object?>> get books => List.unmodifiable(
     ((_data['books'] as List<Object?>?) ?? const <Object?>[])
         .whereType<Map>()
@@ -65,6 +76,12 @@ class AppDatabase {
 
   List<Map<String, Object?>> get sources => List.unmodifiable(
     ((_data['sources'] as List<Object?>?) ?? const <Object?>[])
+        .whereType<Map>()
+        .map((row) => Map<String, Object?>.from(row)),
+  );
+
+  List<Map<String, Object?>> get networkBooks => List.unmodifiable(
+    ((_data['networkBooks'] as List<Object?>?) ?? const <Object?>[])
         .whereType<Map>()
         .map((row) => Map<String, Object?>.from(row)),
   );
@@ -86,7 +103,8 @@ class AppDatabase {
       ..['preferences'] = Map<String, Object?>.from(
         _data['preferences']! as Map,
       )
-      ..['sources'] = List<Object?>.from(_data['sources']! as List);
+      ..['sources'] = List<Object?>.from(_data['sources']! as List)
+      ..['networkBooks'] = List<Object?>.from(_data['networkBooks']! as List);
     change(next);
     await _write(next);
     _data = next;
