@@ -33,10 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('每日阅读目标'),
                 subtitle: Text('${statistics.dailyGoal.inMinutes} 分钟'),
-                onTap: () async {
-                  await statistics.setDailyGoal(const Duration(minutes: 5));
-                  if (mounted) setState(() {});
-                },
+                onTap: () => _editGoal(statistics),
               ),
             ),
             Card(
@@ -101,5 +98,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     controller.dispose();
+  }
+
+  Future<void> _editGoal(ReadingStatisticsRepository repository) async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(title: Text('每日阅读目标')),
+            for (final minutes in [5, 15, 30, 60])
+              ListTile(
+                title: Text('$minutes 分钟'),
+                trailing: repository.dailyGoal.inMinutes == minutes
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(context, minutes),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    await repository.setDailyGoal(Duration(minutes: selected));
+    if (mounted) setState(() {});
   }
 }
