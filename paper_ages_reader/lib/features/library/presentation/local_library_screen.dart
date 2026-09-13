@@ -6,6 +6,7 @@ import '../../../core/storage/app_database.dart';
 import '../../reader_document/presentation/pdf_reader_screen.dart';
 import '../../reader_document/presentation/reader_document_screen.dart';
 import '../../reader_layout/presentation/page_turn_spike.dart';
+import '../../source_engine/presentation/source_management_screen.dart';
 import '../application/document_decoder.dart';
 import '../data/file_selector_book_picker.dart';
 import '../data/local_library_repository.dart';
@@ -84,6 +85,13 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
           onPressed: () => Navigator.of(context)
               .push(MaterialPageRoute(builder: (_) => const PageTurnSpike())),
           icon: const Icon(Icons.science_outlined),
+        ),
+        IconButton(
+          tooltip: '书源管理',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SourceManagementScreen()),
+          ),
+          icon: const Icon(Icons.travel_explore_outlined),
         ),
       ],
     ),

@@ -23,19 +23,28 @@ class AppDatabase {
   }
 
   static Map<String, Object?> _empty() => {
-    'schemaVersion': 1,
+    'schemaVersion': 2,
     'books': <Object?>[],
     'positions': <String, Object?>{},
     'preferences': <String, Object?>{},
+    'sources': <Object?>[],
   };
 
   Future<void> _open() async {
     if (!await _file.exists()) return;
     final decoded = jsonDecode(await _file.readAsString());
-    if (decoded is! Map<String, dynamic> || decoded['schemaVersion'] != 1) {
+    if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Unsupported local library database version');
     }
     _data = Map<String, Object?>.from(decoded);
+    final version = _data['schemaVersion'];
+    if (version == 1) {
+      _data['schemaVersion'] = 2;
+      _data['sources'] = <Object?>[];
+      await _write(_data);
+    } else if (version != 2) {
+      throw const FormatException('Unsupported local library database version');
+    }
   }
 
   Stream<List<Map<String, Object?>>> watchBooks() async* {
@@ -43,8 +52,19 @@ class AppDatabase {
     yield* _changes.stream.map((_) => books);
   }
 
+  Stream<List<Map<String, Object?>>> watchSources() async* {
+    yield sources;
+    yield* _changes.stream.map((_) => sources);
+  }
+
   List<Map<String, Object?>> get books => List.unmodifiable(
     ((_data['books'] as List<Object?>?) ?? const <Object?>[])
+        .whereType<Map>()
+        .map((row) => Map<String, Object?>.from(row)),
+  );
+
+  List<Map<String, Object?>> get sources => List.unmodifiable(
+    ((_data['sources'] as List<Object?>?) ?? const <Object?>[])
         .whereType<Map>()
         .map((row) => Map<String, Object?>.from(row)),
   );
@@ -65,13 +85,18 @@ class AppDatabase {
       ..['positions'] = Map<String, Object?>.from(_data['positions']! as Map)
       ..['preferences'] = Map<String, Object?>.from(
         _data['preferences']! as Map,
-      );
+      )
+      ..['sources'] = List<Object?>.from(_data['sources']! as List);
     change(next);
-    final temporary = File('${_file.path}.part');
-    await temporary.writeAsString(jsonEncode(next), flush: true);
-    await temporary.rename(_file.path);
+    await _write(next);
     _data = next;
     _changes.add(null);
+  }
+
+  Future<void> _write(Map<String, Object?> value) async {
+    final temporary = File('${_file.path}.part');
+    await temporary.writeAsString(jsonEncode(value), flush: true);
+    await temporary.rename(_file.path);
   }
 
   Future<void> close() => _changes.close();

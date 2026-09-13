@@ -7,7 +7,8 @@ Last updated: 2026-09-13
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
-| G3-G6 | Not started | No production online/offline feature, device validation or distribution artifact. |
+| G3 online and offline | In progress | Persistent Legado JSON import and source-management UI exist. Script-bearing rules import visibly but stay disabled; no supported-rule network engine, search, catalogue or download yet. |
+| G4-G6 | Not started | No production system/sync completion, device validation or distribution artifact. |
 
 ## G0 evidence
 
@@ -73,7 +74,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 
 | Gate | Status | Needed evidence |
 | --- | --- | --- |
-| Android APK/native-plugin build | Blocked | Gradle distribution download timed out. Restore Maven/Gradle access, then build debug/profile APK. |
+| Android APK/native-plugin build | Build passed | Debug APK assembled after Gradle recovery; physical install and plugin behavior are still pending. |
 | Android gesture/PDF/audio | Blocked | User-connected device and VS Code run session. |
 | Android offline/lock-screen TTS | Blocked | Installed offline voice, flight-mode and media-control device tests. |
 | iOS PDF/audio/build | Blocked | macOS/Xcode; unsigned CI build is build-only, physical device needs signing. |
@@ -115,3 +116,13 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   integration test was removed because it exercised the replaced session-only
   screen; the surviving text-import contract tests still cover cancel, malformed
   data and UTF-8 normalization.
+
+## G3 evidence
+
+- `SourceManagementScreen` accepts a Legado JSON file through the native file
+  selector and persists valid entries in the local versioned store. Reimporting
+  the same URL replaces its prior entry instead of creating duplicates.
+- The provided source is a supported import specimen, not a supported runtime
+  source: its `@js:` cover rules are retained for transparent reporting and its
+  entry is disabled. No code path executes JavaScript or sends source data to
+  the network. Seven source-engine tests and static analysis pass.
