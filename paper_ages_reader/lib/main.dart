@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'features/library/presentation/local_library_screen.dart';
+import 'features/home/presentation/home_shell.dart';
 
 void main() => runApp(const PaperAgesApp());
 
@@ -22,6 +22,6 @@ class PaperAgesApp extends StatelessWidget {
       ),
       useMaterial3: true,
     ),
-    home: const LocalLibraryScreen(),
+    home: const HomeShell(),
   );
 }
