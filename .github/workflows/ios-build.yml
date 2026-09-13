@@ -22,16 +22,21 @@ jobs:
       - run: dart analyze
       - run: flutter test
       - run: flutter build ios --release --no-codesign
-      - name: Package unsigned IPA for inspection
+      - name: Package unsigned IPA for third-party signing
         run: |
-          rm -rf build/ios/unsigned-ipa
-          mkdir -p build/ios/unsigned-ipa/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/unsigned-ipa/Payload/
-          cd build/ios/unsigned-ipa
-          zip -qry ../PaperAges-unsigned.ipa Payload
+          rm -rf Payload build/ios/unsigned
+          mkdir -p Payload build/ios/unsigned
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            Payload build/ios/unsigned/PaperAges-unsigned.ipa
+      - name: Verify unsigned IPA structure
+        run: |
+          unzip -t build/ios/unsigned/PaperAges-unsigned.ipa
+          unzip -l build/ios/unsigned/PaperAges-unsigned.ipa | \
+            grep -q 'Payload/Runner.app/Info.plist'
       - uses: actions/upload-artifact@v4
         with:
           name: PaperAges-unsigned-ipa
-          path: paper_ages_reader/build/ios/PaperAges-unsigned.ipa
+          path: paper_ages_reader/build/ios/unsigned/PaperAges-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
