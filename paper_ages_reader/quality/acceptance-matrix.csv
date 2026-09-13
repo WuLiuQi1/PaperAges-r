@@ -8,4 +8,6 @@ T004,Implemented,"Glass reader menu widget opens/closes without changing page co
 T020,Implemented,"Drag-reactive page-curl CustomPainter widget surface: flutter test, 2026-09-13; device visual/performance validation pending"
 T038,Implemented,"Offline voice gating and playback-generation state machine: flutter test, 2026-09-13; platform TTS pending"
 T051,Implemented,"Immutable event merger preserves concurrent progress branches: flutter test, 2026-09-13; two-device WebDAV pending"
-T002-T003,T005-T018,T021-T037,T039-T050,T052-T064,Not run,"No execution evidence"
+T013,Implemented,"TXT normalization handles BOM, CR/LF and empty blocks: flutter test, 2026-09-13; file/encoding integration pending"
+T014,Implemented,"Grapheme-safe anchor and chunk tests cover Chinese, emoji, combining characters and URLs: flutter test, 2026-09-13; visual pagination pending"
+T002-T003,T005-T012,T015-T018,T021-T037,T039-T050,T052-T064,Not run,"No execution evidence"

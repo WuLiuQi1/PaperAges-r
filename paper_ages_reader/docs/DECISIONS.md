@@ -75,6 +75,15 @@ policy gives zoom/pan priority while enlarged or multi-touch. These are tested
 domain contracts, not claims that a platform synthesizer ran in the background
 or that a native PDF page rendered.
 
+## G2 text-position baseline
+
+`characters 1.4.1` is now a direct dependency, promoted from Flutter's existing
+transitive lock entry solely to use its grapheme-cluster contract. Text import
+normalizes BOM and line endings but does not collapse or strip content.
+`TextAnchor` stores a normalized block identifier, UTF-16 offset, context hash
+and normalization version. Chunking may prepare work units but never decides
+visual pages, which still require actual font/viewport layout.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition

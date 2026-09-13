@@ -6,7 +6,8 @@ Last updated: 2026-09-13
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, `dart analyze` and one G0 test pass. Android build is externally blocked; iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
-| G2-G6 | Not started | No production feature, device validation or distribution artifact. |
+| G2 reading and state | In progress | TXT normalization, grapheme-safe chunking and text-anchor contracts are implemented and tested; import storage, real layout, theme/font, progress and PDF renderer remain. |
+| G3-G6 | Not started | No production online/offline feature, device validation or distribution artifact. |
 
 ## G0 evidence
 
@@ -75,3 +76,11 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 | Android offline/lock-screen TTS | Blocked | Installed offline voice, flight-mode and media-control device tests. |
 | iOS PDF/audio/build | Blocked | macOS/Xcode; unsigned CI build is build-only, physical device needs signing. |
 | WebDAV transport/concurrency | Blocked | Controlled WebDAV endpoint and two independently persisted device states. |
+
+## G2 evidence
+
+- `TextNormalizer` preserves empty blocks while removing BOM and normalizing
+  line endings. `TextAnchorResolver` snaps offsets to grapheme boundaries and
+  stores a context hash. `GraphemeSafeChunker` round-trips Chinese, emoji,
+  combining characters and URLs without breaking clusters. Four focused tests
+  pass. This is not yet file-picker import, encoding detection or visual layout.
