@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -11,7 +9,6 @@ import '../../library/data/local_library_repository.dart';
 import '../../library/domain/library_book.dart';
 import '../../reader_document/presentation/reader_document_screen.dart';
 import '../../reader_document/presentation/pdf_reader_screen.dart';
-import '../../statistics/data/reading_statistics_repository.dart';
 import '../../settings/presentation/settings_screen.dart';
 import 'search_landing_screen.dart';
 
@@ -233,55 +230,17 @@ class _HomeDashboardState extends State<_HomeDashboard> {
     future: _future,
     builder: (context, snapshot) {
       final database = snapshot.data;
-      final statistics = database == null
-          ? null
-          : ReadingStatisticsRepository(database);
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      final value = statistics?.daily[today] ?? Duration.zero;
-      final goal =
-          statistics?.dailyGoal ?? ReadingStatisticsRepository.defaultGoal;
       final repository = database == null
           ? null
           : LocalLibraryRepository(database);
       final books = repository?.recentBooks ?? <LibraryBook>[];
       final previous = books
-          .skip(1)
           .where((book) => repository!.progressLabel(book.id) != '新书')
-          .take(3)
           .toList();
-      final ratio = goal.inMicroseconds <= 0
-          ? 0.0
-          : (value.inMicroseconds / goal.inMicroseconds).clamp(0.0, 1.0);
       return Scaffold(
         appBar: AppBar(
           title: const Text('主页'),
           actions: [
-            IconButton(
-              tooltip: '阅读目标',
-              onPressed: _settings,
-              icon: SizedBox.square(
-                dimension: 38,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      value: ratio,
-                      strokeWidth: 3,
-                      backgroundColor: const Color(0xFFBCEBF1),
-                      color: const Color(0xFF00ADD0),
-                    ),
-                    Text(
-                      '${value.inMinutes}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF00ADD0),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
             IconButton(
               tooltip: '设置',
               onPressed: _settings,
@@ -298,8 +257,8 @@ class _HomeDashboardState extends State<_HomeDashboard> {
                 padding: const EdgeInsets.only(bottom: 130),
                 children: [
                   _section(
-                    '继续阅读',
-                    books.isEmpty
+                    '之前读过',
+                    previous.isEmpty
                         ? GestureDetector(
                             onTap: widget.onLibrary,
                             child: Container(
@@ -316,7 +275,7 @@ class _HomeDashboardState extends State<_HomeDashboard> {
                                   SizedBox(width: 16),
                                   Expanded(
                                     child: Text(
-                                      '还没有书籍\n前往书库导入 TXT 或 PDF',
+                                      '还没有之前读过的书\n前往书库开始阅读',
                                       style: TextStyle(
                                         fontSize: 14,
                                         height: 1.6,
@@ -327,139 +286,20 @@ class _HomeDashboardState extends State<_HomeDashboard> {
                               ),
                             ),
                           )
-                        : _card(books.first, repository!, highlighted: true),
-                  ),
-                  if (previous.isNotEmpty)
-                    _section(
-                      '之前读过',
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final book in previous)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _card(book, repository!),
-                            ),
-                        ],
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 36, 32, 0),
-                    child: Column(
-                      children: [
-                        const Text(
-                          '阅读目标',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final book in previous)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _card(book, repository!),
+                                ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '坚持每天阅读，提升你的数据，以激励你读完更多图书。',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          height:
-                              (MediaQuery.sizeOf(context).width - 64) / 2 + 40,
-                          child: CustomPaint(
-                            painter: _GoalArc(
-                              progress: ratio,
-                              track: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainer,
-                              color: const Color(0xFF00ADD0),
-                            ),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(height: 32),
-                                  const Text(
-                                    '今日阅读进度',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${value.inMinutes}:${(value.inSeconds % 60).toString().padLeft(2, '0')}',
-                                    style: const TextStyle(
-                                      fontSize: 64,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: -2,
-                                    ),
-                                  ),
-                                  Text(
-                                    '（目标 ${goal.inMinutes} 分钟）',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        FilledButton.tonal(
-                          onPressed: books.isEmpty
-                              ? widget.onLibrary
-                              : () => _read(books.first, repository!),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(50),
-                          ),
-                          child: Text(books.isEmpty ? '前往书库' : '继续阅读'),
-                        ),
-                      ],
-                    ),
                   ),
                 ],
               ),
       );
     },
   );
-}
-
-class _GoalArc extends CustomPainter {
-  const _GoalArc({
-    required this.progress,
-    required this.track,
-    required this.color,
-  });
-  final double progress;
-  final Color track;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final radius = math.min(size.width / 2 - 8, size.height - 8);
-    final rect = Rect.fromCircle(
-      center: Offset(size.width / 2, size.height - 8),
-      radius: radius,
-    );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, math.pi, math.pi, false, paint..color = track);
-    if (progress > 0) {
-      canvas.drawArc(
-        rect,
-        math.pi,
-        math.pi * progress,
-        false,
-        paint..color = color,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GoalArc oldDelegate) =>
-      progress != oldDelegate.progress ||
-      track != oldDelegate.track ||
-      color != oldDelegate.color;
 }

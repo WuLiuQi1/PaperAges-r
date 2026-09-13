@@ -1,6 +1,23 @@
 # Delivery status
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
+
+## Reader interaction follow-up (1.0.0+6)
+
+- Home now contains only the `之前读过` section; the continue-reading and
+  reading-goal panels were removed without deleting stored progress or
+  statistics.
+- The reader's dark directory/progress capsule accepts horizontal drag and
+  saves the resulting text anchor. Its tap action still opens chapters.
+- Reader share uses the native share sheet, listening uses platform TTS, and
+  bookmarks plus notes persist per book. The contents sheet exposes separate
+  chapter, bookmark and note lists with jump-back behavior.
+- Appearance settings now persist page transition mode, day/night paper,
+  reading brightness, font size and line height. The sun slider controls the
+  visual reading brightness; font size remains on the small/large control.
+- Static analysis is clean, all 93 tests pass, and the Android Debug APK builds.
+  Native share/TTS, audio interruption/background behavior, iOS packaging and
+  visual/gesture feel are not verified until device testing.
 
 ## Apple Books alignment follow-up (1.0.0+3)
 
@@ -19,7 +36,7 @@ Last updated: 2026-09-13
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
 | G3 online and offline | In progress — implementation assembled; acceptance gates open | Safe static sources support search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching. A compatible live source plus Android device validation are still required before this stage can be accepted. |
-| G4 | In progress — foundations implemented; platform/service gates open | Offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Native TTS/media service, WebDAV transport/settings and all device/two-device acceptance remain. |
+| G4 | In progress — foundations implemented; platform/service gates open | Foreground system TTS, offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Background media controls, WebDAV settings and all device/two-device acceptance remain. |
 | G5 | In progress — device defects reopened | User iPhone screenshots show import-picker failure and substantial visual gaps. See 2026-09-13 correction below. Final visual acceptance is not passed. |
 | G6 | In progress | GitHub iOS packaging workflow exists; build success and device acceptance must be tracked separately. |
 
@@ -240,9 +257,11 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   outside the strict whitelist before they are stored. Credentials, bodies,
   imported files, audio, fonts, paths, reading statistics and preferences have
   no permitted route into these events.
-- iOS declares the audio background mode. This is configuration only: there is
-  no native AVSpeech/Android media-service adapter yet, therefore no claim is
-  made for background, lock-screen, interruption or headset behavior.
+- Foreground reader narration now calls the maintained platform TTS plugin and
+  Android declares package visibility for installed speech engines. iOS audio
+  background mode is present, but there is no Android media service or tested
+  lock-screen controller; no claim is made for background, interruption or
+  headset behavior until device acceptance.
 - `WebDavEventTransport` uses per-device immutable paths, conditional `PUT`,
   authenticated readback and payload-hash decoding before an outbox event can
   be considered uploaded. `PROPFIND` accepts namespace-prefixed DAV `href`

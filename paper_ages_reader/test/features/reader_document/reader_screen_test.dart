@@ -14,8 +14,28 @@ import 'package:paper_ages_reader/features/reader_document/domain/normalized_tex
 class _MemoryRepository extends LocalLibraryRepository {
   _MemoryRepository(super.database, this.text);
   final String text;
+  final preferences = <String, String>{};
+
   @override
   Future<String> readText(LibraryBook book) async => text;
+
+  @override
+  Future<void> savePreference(String key, String value) async {
+    preferences[key] = value;
+  }
+
+  @override
+  Future<String?> readPreference(String key) async => preferences[key];
+
+  @override
+  Future<void> savePosition({
+    required String bookId,
+    required int blockIndex,
+    required int graphemeOffset,
+    required String contextHash,
+    required int revision,
+    int? totalBlocks,
+  }) async {}
 }
 
 void main() {
@@ -34,7 +54,6 @@ void main() {
       final db = await tester.runAsync(
         () => AppDatabase.openFile(File('${folder.path}/state.json')),
       );
-      addTearDown(() => db!.close());
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -51,6 +70,7 @@ void main() {
         });
       }
       final boundary = GlobalKey();
+      final repository = _MemoryRepository(db!, file.readAsStringSync());
       await tester.pumpWidget(
         RepaintBoundary(
           key: boundary,
@@ -70,7 +90,7 @@ void main() {
                 fingerprint: 'reader',
                 createdAt: DateTime(2026),
               ),
-              repository: _MemoryRepository(db!, file.readAsStringSync()),
+              repository: repository,
               normalize: (text) async => const TextNormalizer().normalize(text),
             ),
           ),
@@ -106,14 +126,67 @@ void main() {
       await tester.tap(find.byTooltip('阅读菜单'));
       await tester.pumpAndSettle();
       expect(find.text('在图书中搜索'), findsOneWidget);
+      final progressFinder = find.textContaining('目录 ·');
+      final beforeDrag = tester.widget<Text>(progressFinder).data;
+      final progressRect = tester.getRect(progressFinder);
+      await tester.dragFrom(
+        Offset(progressRect.left + 8, progressRect.center.dy),
+        Offset(progressRect.width * .72, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(progressFinder).data, isNot(beforeDrag));
+      await tester.tap(find.byTooltip('添加书签'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      expect(await repository.readPreference('bookmarks:reader'), isNotNull);
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('笔记'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '这里是一条阅读笔记');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      expect(await repository.readPreference('notes:reader'), contains('阅读笔记'));
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('目录 ·'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('书签'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('全书'), findsOneWidget);
+      await tester.tap(find.text('笔记'));
+      await tester.pumpAndSettle();
+      expect(find.text('这里是一条阅读笔记'), findsOneWidget);
+      await tester.tap(find.byTooltip('完成'));
+      await tester.pumpAndSettle();
       await capture('reader-menu');
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('主题与设置'));
       await tester.pumpAndSettle();
       expect(find.text('纸张'), findsOneWidget);
+      expect(find.text('滑动'), findsOneWidget);
+      await tester.tap(find.text('滑动'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('淡入'));
+      await tester.pumpAndSettle();
+      expect(find.text('淡入'), findsOneWidget);
+      await tester.tap(find.byTooltip('切换夜间模式'));
+      await tester.pumpAndSettle();
       await capture('reader-theme');
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('关闭主题与设置'));
+      await tester.tap(find.text('完成'));
       await tester.pumpAndSettle();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      expect(await repository.readPreference('readerTurnMode'), 'fade');
+      expect(await repository.readPreference('readerPaperTheme'), '1');
       expect(find.textContaining('目录 ·'), findsNothing);
       await tester.tap(find.byTooltip('阅读菜单'));
       await tester.pumpAndSettle();
@@ -121,7 +194,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('章节'), findsOneWidget);
       expect(find.text('书签'), findsOneWidget);
-      expect(find.text('高亮标记'), findsOneWidget);
+      expect(find.text('笔记'), findsOneWidget);
       await tester.tap(find.byTooltip('完成'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('阅读菜单'));
@@ -131,8 +204,14 @@ void main() {
       expect(find.text('在此书中'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
-        await tester.pumpWidget(const SizedBox());
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await db.close();
       });
     },
   );

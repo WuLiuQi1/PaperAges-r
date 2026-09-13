@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Runtime media service implementation is intentionally not declared yet:
-         permissions alone do not make background TTS reliable. -->
+    <!-- Keep the screen-session audio active while the system TTS engine speaks. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="paper_ages_reader"
@@ -40,6 +39,10 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Android 11+ package visibility for installed text-to-speech engines. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

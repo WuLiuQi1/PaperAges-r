@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show FontLoader;
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../library/data/file_selector_book_picker.dart';
 import '../../library/data/local_library_repository.dart';
@@ -19,6 +22,17 @@ NormalizedTextDocument _normalizeForReader(String text) =>
     const TextNormalizer().normalize(text);
 Future<NormalizedTextDocument> normalizeReaderDocument(String text) =>
     compute(_normalizeForReader, text);
+
+enum ReaderTurnMode { slide, curl, fade, scroll }
+
+extension on ReaderTurnMode {
+  String get label => switch (this) {
+    ReaderTurnMode.slide => '滑动',
+    ReaderTurnMode.curl => '翻页',
+    ReaderTurnMode.fade => '淡入',
+    ReaderTurnMode.scroll => '滚动',
+  };
+}
 
 class ReaderDocumentScreen extends StatefulWidget {
   const ReaderDocumentScreen({
@@ -44,6 +58,13 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   final _history = <int>[];
   bool _menu = false;
   bool _chromeVisible = true;
+  final FlutterTts _tts = FlutterTts();
+  bool _speaking = false;
+  final Set<int> _bookmarks = {};
+  final Map<int, String> _notes = {};
+  double _brightness = 1;
+  ReaderTurnMode _turnMode = ReaderTurnMode.slide;
+  double _turnDirection = 1;
   int _theme = 0;
   static const _papers = [
     Color(0xFFFFFFFF),
@@ -66,6 +87,15 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _tts.setCompletionHandler(() {
+      if (mounted) setState(() => _speaking = false);
+    });
+    _tts.setCancelHandler(() {
+      if (mounted) setState(() => _speaking = false);
+    });
+    _tts.setErrorHandler((_) {
+      if (mounted) setState(() => _speaking = false);
+    });
     _restore();
   }
 
@@ -82,6 +112,18 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       final savedTheme = await widget.repository.readPreference(
         'readerPaperTheme',
       );
+      final savedBrightness = await widget.repository.readPreference(
+        'readerBrightness',
+      );
+      final savedTurnMode = await widget.repository.readPreference(
+        'readerTurnMode',
+      );
+      final savedBookmarks = await widget.repository.readPreference(
+        'bookmarks:${widget.book.id}',
+      );
+      final savedNotes = await widget.repository.readPreference(
+        'notes:${widget.book.id}',
+      );
       if (savedFontPath != null && await File(savedFontPath).exists()) {
         await _loadFont(savedFontPath, persist: false);
       }
@@ -95,6 +137,21 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
         );
         _revision = position?.revision ?? 0;
         _theme = (int.tryParse(savedTheme ?? '') ?? 0).clamp(0, 5);
+        _brightness = (double.tryParse(savedBrightness ?? '') ?? 1).clamp(
+          .25,
+          1,
+        );
+        _turnMode =
+            ReaderTurnMode.values
+                .where((mode) => mode.name == savedTurnMode)
+                .firstOrNull ??
+            ReaderTurnMode.slide;
+        _bookmarks
+          ..clear()
+          ..addAll(_decodeBookmarks(savedBookmarks));
+        _notes
+          ..clear()
+          ..addAll(_decodeNotes(savedNotes));
         _fontSize = (double.tryParse(savedSize ?? '') ?? _fontSize).clamp(
           14,
           32,
@@ -108,6 +165,30 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       )..resumeReading();
     } catch (error) {
       if (mounted) setState(() => _error = '无法打开此书：$error');
+    }
+  }
+
+  Iterable<int> _decodeBookmarks(String? raw) {
+    try {
+      final value = jsonDecode(raw ?? '[]');
+      return value is List ? value.whereType<int>() : const <int>[];
+    } catch (_) {
+      return const <int>[];
+    }
+  }
+
+  Map<int, String> _decodeNotes(String? raw) {
+    try {
+      final value = jsonDecode(raw ?? '{}');
+      if (value is! Map) return const {};
+      final notes = <int, String>{};
+      for (final entry in value.entries) {
+        final offset = int.tryParse(entry.key.toString());
+        if (offset != null) notes[offset] = entry.value.toString();
+      }
+      return notes;
+    } catch (_) {
+      return const {};
     }
   }
 
@@ -127,7 +208,16 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     WidgetsBinding.instance.removeObserver(this);
     final recorder = _statistics;
     if (recorder != null) unawaited(recorder.pauseReading());
+    if (_speaking) unawaited(_stopTtsSilently());
     super.dispose();
+  }
+
+  Future<void> _stopTtsSilently() async {
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // The platform channel may already be detached during app/test teardown.
+    }
   }
 
   Future<void> _savePage(int index) async {
@@ -155,6 +245,8 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     final oldSize = _fontSize;
     final oldHeight = _lineHeight;
     final oldTheme = _theme;
+    final oldBrightness = _brightness;
+    final oldTurnMode = _turnMode;
     var saved = false;
     await showModalBottomSheet<void>(
       context: context,
@@ -229,9 +321,35 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: _controlPill(
-                          children: const [
-                            Icon(Icons.chrome_reader_mode_outlined),
-                            Icon(Icons.contrast_rounded),
+                          children: [
+                            TextButton.icon(
+                              onPressed: () async {
+                                await _chooseTurnMode();
+                                setSheetState(() {});
+                              },
+                              icon: const Icon(
+                                Icons.chrome_reader_mode_outlined,
+                              ),
+                              label: Text(_turnMode.label),
+                            ),
+                            IconButton(
+                              tooltip: darkPaperForTheme(_theme)
+                                  ? '切换日间模式'
+                                  : '切换夜间模式',
+                              onPressed: () {
+                                setState(
+                                  () => _theme = darkPaperForTheme(_theme)
+                                      ? 0
+                                      : 1,
+                                );
+                                setSheetState(() {});
+                              },
+                              icon: Icon(
+                                darkPaperForTheme(_theme)
+                                    ? Icons.light_mode_rounded
+                                    : Icons.dark_mode_rounded,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -243,9 +361,11 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                       const Icon(Icons.light_mode_outlined, size: 20),
                       Expanded(
                         child: Slider(
-                          value: (_fontSize - 14) / 18,
+                          value: _brightness,
+                          min: .25,
+                          max: 1,
                           onChanged: (value) {
-                            setState(() => _fontSize = 14 + value * 18);
+                            setState(() => _brightness = value);
                             setSheetState(() {});
                           },
                         ),
@@ -385,6 +505,14 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                         'readerPaperTheme',
                         _theme.toString(),
                       );
+                      await widget.repository.savePreference(
+                        'readerBrightness',
+                        _brightness.toString(),
+                      );
+                      await widget.repository.savePreference(
+                        'readerTurnMode',
+                        _turnMode.name,
+                      );
                       saved = true;
                       if (context.mounted) Navigator.of(context).pop();
                     },
@@ -402,9 +530,13 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
         _fontSize = oldSize;
         _lineHeight = oldHeight;
         _theme = oldTheme;
+        _brightness = oldBrightness;
+        _turnMode = oldTurnMode;
       });
     }
   }
+
+  bool darkPaperForTheme(int theme) => theme == 1 || theme == 5;
 
   Future<String> _copyAndLoadFont(String name, List<int> bytes) async {
     final docs = await getApplicationDocumentsDirectory();
@@ -490,132 +622,216 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   Future<void> _openContents() async {
     final metrics = _pageMetrics();
     final chapters = _chapters();
+    var tab = 0;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black26,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: .92,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFF7F7F7),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 18, 8),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 48),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(
-                              widget.book.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => FractionallySizedBox(
+          heightFactor: .92,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF7F7F7),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 18, 18, 8),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 48),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                widget.book.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '第 ${metrics.current} 页（共约 ${metrics.total} 页）',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _roundButton(
+                          Icons.check,
+                          () => Navigator.pop(sheetContext),
+                          tooltip: '完成',
+                          dark: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    height: 42,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7E7E9),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      children: [
+                        for (final (index, label) in const [
+                          (0, '章节'),
+                          (1, '书签'),
+                          (2, '笔记'),
+                        ])
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () => setSheetState(() => tab = index),
+                              child: Container(
+                                margin: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: tab == index
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontWeight: tab == index
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '第 ${metrics.current} 页（共约 ${metrics.total} 页）',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _roundButton(
-                        Icons.check,
-                        () => Navigator.pop(sheetContext),
-                        tooltip: '完成',
-                        dark: true,
-                      ),
-                    ],
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                Container(
-                  height: 42,
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE7E7E9),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '章节',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const Expanded(child: Center(child: Text('书签'))),
-                      const Expanded(child: Center(child: Text('高亮标记'))),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
-                    itemCount: chapters.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, index) {
-                      final chapter = chapters[index];
-                      final page =
-                          (chapter.offset / (_page?.text.length ?? 500))
-                              .floor() +
-                          1;
-                      return Material(
-                        color: Colors.transparent,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 5,
-                          ),
-                          title: Text(
-                            chapter.title,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          trailing: Text(
-                            '$page',
-                            style: const TextStyle(color: Colors.black45),
-                          ),
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _jumpTo(chapter.offset);
-                          },
-                        ),
-                      );
+                  Expanded(
+                    child: switch (tab) {
+                      0 => _chapterList(sheetContext, chapters),
+                      1 => _bookmarkList(sheetContext),
+                      _ => _noteList(sheetContext),
                     },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _chapterList(
+    BuildContext sheetContext,
+    List<({String title, int offset})> chapters,
+  ) => ListView.separated(
+    padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+    itemCount: chapters.length,
+    separatorBuilder: (_, _) => const Divider(height: 1),
+    itemBuilder: (_, index) {
+      final chapter = chapters[index];
+      final page = (chapter.offset / (_page?.text.length ?? 500)).floor() + 1;
+      return Material(
+        color: Colors.transparent,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(vertical: 5),
+          title: Text(
+            chapter.title,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          trailing: Text(
+            '$page',
+            style: const TextStyle(color: Colors.black45),
+          ),
+          onTap: () {
+            Navigator.pop(sheetContext);
+            _jumpTo(chapter.offset);
+          },
+        ),
+      );
+    },
+  );
+
+  Widget _bookmarkList(BuildContext sheetContext) {
+    final offsets = _bookmarks.toList()..sort();
+    if (offsets.isEmpty) return const Center(child: Text('还没有书签'));
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+      itemCount: offsets.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (_, index) {
+        final offset = offsets[index];
+        return Material(
+          color: Colors.transparent,
+          child: ListTile(
+            leading: const Icon(Icons.bookmark_rounded),
+            title: Text(_excerptAt(offset)),
+            subtitle: Text('全书 ${_percentAt(offset)}%'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _jumpTo(offset);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _noteList(BuildContext sheetContext) {
+    final entries = _notes.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    if (entries.isEmpty) return const Center(child: Text('还没有笔记'));
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+      itemCount: entries.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (_, index) {
+        final entry = entries[index];
+        return Material(
+          color: Colors.transparent,
+          child: ListTile(
+            leading: const Icon(Icons.notes_rounded),
+            title: Text(entry.value),
+            subtitle: Text(
+              '${_excerptAt(entry.key)} · ${_percentAt(entry.key)}%',
+            ),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _jumpTo(entry.key);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  String _excerptAt(int offset) {
+    final text = _paginator!.text;
+    final start = offset.clamp(0, text.length);
+    final end = (start + 42).clamp(0, text.length);
+    return text.substring(start, end).replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  int _percentAt(int offset) => _paginator!.text.isEmpty
+      ? 0
+      : (offset * 100 / _paginator!.text.length).round().clamp(0, 100);
 
   Future<void> _openBookSearch() async {
     final controller = TextEditingController();
@@ -753,10 +969,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _menuAction('目录 · $progress%', Icons.format_list_bulleted_rounded, () {
-          setState(() => _menu = false);
-          _openContents();
-        }, dark: true),
+        _progressAction(progress),
         const SizedBox(height: 7),
         _menuAction('在图书中搜索', Icons.search_rounded, () {
           setState(() => _menu = false);
@@ -773,26 +986,26 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
           children: [
             _roundButton(
               Icons.ios_share_rounded,
-              () => _showUnavailable('分享'),
+              _shareCurrentPage,
               tooltip: '分享',
             ),
             const SizedBox(width: 8),
             _roundButton(
-              Icons.play_circle_outline_rounded,
-              () => _showUnavailable('听书'),
-              tooltip: '听书',
+              _speaking
+                  ? Icons.stop_circle_outlined
+                  : Icons.play_circle_outline_rounded,
+              _toggleListening,
+              tooltip: _speaking ? '停止听书' : '听书',
             ),
             const SizedBox(width: 8),
-            _roundButton(
-              Icons.notes_rounded,
-              () => _showUnavailable('笔记'),
-              tooltip: '笔记',
-            ),
+            _roundButton(Icons.notes_rounded, _editNote, tooltip: '笔记'),
             const SizedBox(width: 8),
             _roundButton(
-              Icons.bookmark_border_rounded,
-              () => _showUnavailable('书签'),
-              tooltip: '书签',
+              _bookmarks.contains(_offset)
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
+              _toggleBookmark,
+              tooltip: _bookmarks.contains(_offset) ? '移除书签' : '添加书签',
             ),
           ],
         ),
@@ -836,14 +1049,195 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     ),
   );
 
-  void _showUnavailable(String feature) {
+  Widget _progressAction(int progress) => GestureDetector(
+    onHorizontalDragUpdate: (details) {
+      final fraction = (details.localPosition.dx / 226).clamp(0.0, 1.0);
+      final raw = (_paginator!.text.length * fraction).round();
+      final location = _paginator!.anchorFor(
+        raw.clamp(0, _paginator!.text.length),
+      );
+      final anchor = const TextAnchorResolver().create(
+        editionId: widget.book.fingerprint,
+        document: _document!,
+        blockIndex: location.block,
+        requestedOffsetUtf16: location.offset,
+      );
+      setState(() {
+        _offset = _paginator!.offsetFor(location.block, anchor.offsetUtf16);
+        _history.clear();
+      });
+    },
+    onHorizontalDragEnd: (_) => unawaited(_savePage(_offset)),
+    child: _menuAction(
+      '目录 · $progress%',
+      Icons.format_list_bulleted_rounded,
+      () {
+        setState(() => _menu = false);
+        _openContents();
+      },
+      dark: true,
+    ),
+  );
+
+  Future<void> _toggleBookmark() async {
+    setState(() {
+      if (!_bookmarks.add(_offset)) _bookmarks.remove(_offset);
+      _menu = false;
+    });
+    await widget.repository.savePreference(
+      'bookmarks:${widget.book.id}',
+      jsonEncode(_bookmarks.toList()..sort()),
+    );
+  }
+
+  Future<void> _editNote() async {
     setState(() => _menu = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 2),
-        content: Text('$feature功能尚未完成'),
+    var draft = _notes[_offset] ?? '';
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('添加笔记'),
+        content: TextFormField(
+          initialValue: draft,
+          autofocus: true,
+          maxLines: 6,
+          onChanged: (value) => draft = value,
+          decoration: const InputDecoration(hintText: '记录这一页的想法'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, draft.trim()),
+            child: const Text('保存'),
+          ),
+        ],
       ),
     );
+    if (result == null) return;
+    setState(() {
+      if (result.isEmpty) {
+        _notes.remove(_offset);
+      } else {
+        _notes[_offset] = result;
+      }
+    });
+    await widget.repository.savePreference(
+      'notes:${widget.book.id}',
+      jsonEncode(_notes.map((key, value) => MapEntry('$key', value))),
+    );
+  }
+
+  Future<void> _toggleListening() async {
+    setState(() => _menu = false);
+    try {
+      if (_speaking) {
+        await _tts.stop();
+        if (mounted) setState(() => _speaking = false);
+        return;
+      }
+      await _tts.setLanguage('zh-CN');
+      await _tts.setSpeechRate(.5);
+      await _tts.setVolume(1);
+      final result = await _tts.speak(_page?.text ?? '');
+      if (mounted) setState(() => _speaking = result == 1);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('系统语音不可用，请先安装中文离线语音')));
+      }
+    }
+  }
+
+  Future<void> _shareCurrentPage() async {
+    setState(() => _menu = false);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: widget.book.title,
+          text: '${_page?.text ?? ''}\n\n——《${widget.book.title}》',
+          sharePositionOrigin: origin,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('暂时无法打开系统分享')));
+      }
+    }
+  }
+
+  Future<void> _chooseTurnMode() async {
+    final selected = await showModalBottomSheet<ReaderTurnMode>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                '翻页方式',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final mode in ReaderTurnMode.values)
+              ListTile(
+                leading: Icon(
+                  mode == _turnMode
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(mode.label),
+                onTap: () => Navigator.pop(context, mode),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    setState(() => _turnMode = selected);
+    await widget.repository.savePreference('readerTurnMode', selected.name);
+  }
+
+  Widget _pageTransition(Widget child, Animation<double> animation) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+    );
+    return switch (_turnMode) {
+      ReaderTurnMode.fade => FadeTransition(opacity: curved, child: child),
+      ReaderTurnMode.scroll => SlideTransition(
+        position: Tween(
+          begin: Offset(0, _turnDirection * .18),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+      ReaderTurnMode.curl => FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween(begin: .88, end: 1.0).animate(curved),
+          alignment: _turnDirection > 0
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: child,
+        ),
+      ),
+      ReaderTurnMode.slide => SlideTransition(
+        position: Tween(
+          begin: Offset(_turnDirection * .18, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    };
   }
 
   @override
@@ -952,6 +1346,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                 }
                                 if (!forward && _offset == 0) return;
                                 setState(() {
+                                  _turnDirection = forward ? 1 : -1;
                                   if (forward) {
                                     _history.add(_offset);
                                     _offset = page.end;
@@ -995,11 +1390,16 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                 },
                                 child: Align(
                                   alignment: Alignment.topLeft,
-                                  child: Text(
-                                    _page!.text,
-                                    textAlign: TextAlign.justify,
-                                    textScaler: scaler,
-                                    style: style,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 240),
+                                    transitionBuilder: _pageTransition,
+                                    child: Text(
+                                      _page!.text,
+                                      key: ValueKey(_offset),
+                                      textAlign: TextAlign.justify,
+                                      textScaler: scaler,
+                                      style: style,
+                                    ),
                                   ),
                                 ),
                               );
@@ -1049,6 +1449,16 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                         child: _readerMenu(),
+                      ),
+                    ),
+                  if (_brightness < 1)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ColoredBox(
+                          color: Colors.black.withValues(
+                            alpha: (1 - _brightness) * .68,
+                          ),
+                        ),
                       ),
                     ),
                 ],

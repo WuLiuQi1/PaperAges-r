@@ -4,9 +4,9 @@ Flutter reader for Android and iOS. The release name, bundle identifier, signing
 
 ## Current delivery state
 
-The project has local TXT/PDF reading, static safe-source workflows, cache-backed downloads, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
+The project has local TXT/PDF reading, Legado source workflows including a bounded JavaScript rule runtime, cache-backed downloads, system TTS/share integration, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
 
-This is **not an accepted release**: real Android device tests, iOS/macOS validation, offline lock-screen TTS, a compatible live source, and two-device WebDAV recovery remain required.
+This is **not an accepted release**: real Android device tests, iOS/macOS validation, background/lock-screen TTS, live-source compatibility, and two-device WebDAV recovery remain required.
 
 ## Windows development
 
@@ -55,7 +55,7 @@ Only a credential-free HTTPS directory URL is stored in app settings. Username/p
 
 - Android: attach a physical device for reader gestures, PDF, offline voice, lock screen, profile-frame and long-run tests.
 - iOS: macOS/Xcode is required; unsigned CI output is build evidence only.
-- Sources: the provided script-bearing Legado source is intentionally disabled; validate a compatible safe static source end to end.
+- Sources: static and bounded JavaScript rules are implemented; validate the supplied source and failure boundaries end to end on a device.
 - WebDAV: validate 401/403, timeout, quota, partial upload and concurrent devices against a user-controlled endpoint.
 
 ## Licensing
