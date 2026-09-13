@@ -178,3 +178,8 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   cache → durable task transitions. They prove a binding-revision mismatch
   makes zero requests, and cancellation both during the first persistence
   window and during an active response leaves no completed key or cache body.
+- Source management now exposes a bounded three-at-a-time all-safe-source
+  search. Each source emits results or its own error independently, while a
+  new query or screen disposal cancels prior generations so stale results do
+  not enter the current list. Live multi-source timeout behavior is still a
+  device/source acceptance gate.

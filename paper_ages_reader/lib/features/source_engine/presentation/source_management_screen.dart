@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/storage/app_database.dart';
 import '../application/legado_source_importer.dart';
 import '../data/local_source_repository.dart';
+import 'all_sources_search_screen.dart';
 import 'source_search_screen.dart';
 
 class SourceManagementScreen extends StatefulWidget {
@@ -65,7 +66,38 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('书源管理')),
+    appBar: AppBar(
+      title: const Text('书源管理'),
+      actions: [
+        FutureBuilder<LocalSourceRepository>(
+          future: _repository,
+          builder: (context, ready) {
+            if (!ready.hasData) return const SizedBox.shrink();
+            return StreamBuilder<List<StoredBookSource>>(
+              stream: ready.data!.watchSources(),
+              builder: (context, snapshot) {
+                final sources = snapshot.data ?? const <StoredBookSource>[];
+                final hasSafe = sources.any(
+                  (source) => source.state == SourceImportState.ready,
+                );
+                return IconButton(
+                  tooltip: '搜索全部安全书源',
+                  icon: const Icon(Icons.manage_search_outlined),
+                  onPressed: hasSafe
+                      ? () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AllSourcesSearchScreen(sources: sources),
+                          ),
+                        )
+                      : null,
+                );
+              },
+            );
+          },
+        ),
+      ],
+    ),
     body: FutureBuilder<LocalSourceRepository>(
       future: _repository,
       builder: (context, ready) {
