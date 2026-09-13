@@ -46,9 +46,49 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void _show(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
+  Future<void> _clearCache(_DownloadsDependencies deps) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清理网络缓存？'),
+        content: const Text('已下载章节将需要重新下载。导入的 TXT、PDF、字体和阅读进度不会被删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('清理'),
+          ),
+        ],
+      ),
+    );
+    if (approved != true) return;
+    try {
+      await deps.tasks.resetForCacheClear();
+      await (await ChapterCache.defaults()).clearNetworkCache();
+      if (mounted) _show('网络章节缓存已清理，下载任务已重置。');
+    } catch (error) {
+      if (mounted) _show('缓存清理未完成：$error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('下载')),
+    appBar: AppBar(
+      title: const Text('下载'),
+      actions: [
+        FutureBuilder<_DownloadsDependencies>(
+          future: _dependencies,
+          builder: (context, ready) => IconButton(
+            tooltip: '清理网络缓存',
+            icon: const Icon(Icons.cleaning_services_outlined),
+            onPressed: ready.hasData ? () => _clearCache(ready.data!) : null,
+          ),
+        ),
+      ],
+    ),
     body: FutureBuilder<_DownloadsDependencies>(
       future: _dependencies,
       builder: (context, ready) {

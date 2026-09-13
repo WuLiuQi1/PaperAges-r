@@ -98,6 +98,30 @@ void main() {
     expect(calls, 0);
   });
 
+  test(
+    'rejects unsupported rule composition before issuing HTTP request',
+    () async {
+      var calls = 0;
+      final engine = StaticSourceEngine(
+        client: MockClient((_) async {
+          calls++;
+          return http.Response('', 200);
+        }),
+      );
+      final unsupported = Map<String, Object?>.from(staticSource)
+        ..['ruleSearch'] = {
+          'bookList': '.book||.legacy',
+          'name': 'a@text',
+          'bookUrl': 'a@href',
+        };
+      await expectLater(
+        engine.search(source: unsupported, query: 'x'),
+        throwsA(isA<UnsupportedRuleFailure>()),
+      );
+      expect(calls, 0);
+    },
+  );
+
   test('honors cancellation before any request', () async {
     final token = SourceCancellationToken()..cancel();
     final engine = StaticSourceEngine(

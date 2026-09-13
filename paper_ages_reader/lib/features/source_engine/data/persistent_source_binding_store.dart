@@ -32,6 +32,22 @@ class PersistentSourceBindingStore {
       }
       bindings[next.bookId] = _toRow(next);
       data['sourceBindings'] = bindings;
+      // The source identity and the readable chapter anchor are one durable
+      // snapshot. Preserve any layout-specific anchor data already present;
+      // only replace the source-facing fields after the candidate was read.
+      final positions = Map<String, Object?>.from(data['positions']! as Map);
+      final priorPosition = positions[next.bookId];
+      final position = priorPosition is Map
+          ? Map<String, Object?>.from(priorPosition)
+          : <String, Object?>{};
+      position
+        ..['sourceUrl'] = next.sourceUrl
+        ..['locator'] = next.locator.toString()
+        ..['chapterKey'] = next.chapterKey
+        ..['bindingRevision'] = next.revision
+        ..['updatedAtMillis'] = DateTime.now().millisecondsSinceEpoch;
+      positions[next.bookId] = position;
+      data['positions'] = positions;
       result = SourceSwitchCommitted(next);
     });
     return result;

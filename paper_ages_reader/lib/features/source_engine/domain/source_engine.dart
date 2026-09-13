@@ -1,7 +1,9 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:html/parser.dart' show parse;
 import 'package:http/http.dart' as http;
 
@@ -106,6 +108,19 @@ class StaticSourceEngine {
       throw const UnsupportedRuleFailure(
         'Static searchUrl and ruleSearch are required',
       );
+    _validateSearchTemplate(template);
+    final listSelector = _rule(rules, 'bookList');
+    final nameRule = _rule(rules, 'name');
+    final bookUrlRule = _rule(rules, 'bookUrl');
+    final authorRule = _rule(rules, 'author');
+    final coverRule = _rule(rules, 'coverUrl');
+    final introRule = _rule(rules, 'intro');
+    final lastChapterRule = _rule(rules, 'lastChapter');
+    if (listSelector == null || nameRule == null || bookUrlRule == null) {
+      throw const UnsupportedRuleFailure(
+        'ruleSearch.bookList, name and bookUrl are required',
+      );
+    }
     final document = await _getHtml(
       _resolve(
         _sourceUri(source),
@@ -113,27 +128,21 @@ class StaticSourceEngine {
       ),
       cancellationToken,
     );
-    final listSelector = _rule(rules, 'bookList');
-    if (listSelector == null)
-      throw const UnsupportedRuleFailure('ruleSearch.bookList is required');
     final items = _select(document, listSelector);
     return List<NetworkBook>.from(
       items
           .map(
             (item) => NetworkBook(
               sourceUrl: _sourceUri(source).toString(),
-              title: _value(item, _rule(rules, 'name')) ?? '',
+              title: _value(item, nameRule) ?? '',
               locator: _resolve(
                 _sourceUri(source),
-                _value(item, _rule(rules, 'bookUrl')) ?? '',
+                _value(item, bookUrlRule) ?? '',
               ),
-              author: _value(item, _rule(rules, 'author')),
-              coverUrl: _urlOrNull(
-                _sourceUri(source),
-                _value(item, _rule(rules, 'coverUrl')),
-              ),
-              intro: _value(item, _rule(rules, 'intro')),
-              lastChapter: _value(item, _rule(rules, 'lastChapter')),
+              author: _value(item, authorRule),
+              coverUrl: _urlOrNull(_sourceUri(source), _value(item, coverRule)),
+              intro: _value(item, introRule),
+              lastChapter: _value(item, lastChapterRule),
             ),
           )
           .where((book) => book.title.isNotEmpty && book.locator.hasScheme)
@@ -151,8 +160,14 @@ class StaticSourceEngine {
     if (rules is! Map)
       throw const UnsupportedRuleFailure('ruleToc is required');
     final selector = _rule(rules, 'chapterList');
-    if (selector == null)
-      throw const UnsupportedRuleFailure('ruleToc.chapterList is required');
+    final chapterNameRule = _rule(rules, 'chapterName');
+    final chapterUrlRule = _rule(rules, 'chapterUrl');
+    final nextTocRule = _rule(rules, 'nextTocUrl');
+    if (selector == null || chapterNameRule == null || chapterUrlRule == null) {
+      throw const UnsupportedRuleFailure(
+        'ruleToc.chapterList, chapterName and chapterUrl are required',
+      );
+    }
     final chapters = <SourceChapter>[];
     final seenPages = <String>{};
     final seenChapterUrls = <String>{};
@@ -162,8 +177,8 @@ class StaticSourceEngine {
       if (!seenPages.add(page.toString())) break;
       final document = await _getHtml(page, cancellationToken);
       for (final entry in _select(document, selector).asMap().entries) {
-        final title = _value(entry.value, _rule(rules, 'chapterName')) ?? '';
-        final url = _value(entry.value, _rule(rules, 'chapterUrl')) ?? '';
+        final title = _value(entry.value, chapterNameRule) ?? '';
+        final url = _value(entry.value, chapterUrlRule) ?? '';
         final locator = _resolve(page, url);
         if (title.isEmpty ||
             !locator.hasScheme ||
@@ -172,14 +187,14 @@ class StaticSourceEngine {
         }
         chapters.add(
           SourceChapter(
-            key: '${chapters.length}:${locator.toString().hashCode}',
+            key: sha256.convert(utf8.encode(locator.toString())).toString(),
             title: title,
             locator: locator,
             ordinal: chapters.length,
           ),
         );
       }
-      final next = _value(document, _rule(rules, 'nextTocUrl'));
+      final next = _value(document, nextTocRule);
       if (next == null || next.isEmpty) break;
       page = _resolve(page, next);
     }
@@ -195,25 +210,30 @@ class StaticSourceEngine {
     final rules = source['ruleBookInfo'];
     if (rules is! Map)
       throw const UnsupportedRuleFailure('ruleBookInfo is required');
+    final nameRule = _rule(rules, 'name');
+    final tocRule = _rule(rules, 'tocUrl');
+    final authorRule = _rule(rules, 'author');
+    final coverRule = _rule(rules, 'coverUrl');
+    final introRule = _rule(rules, 'intro');
+    final lastChapterRule = _rule(rules, 'lastChapter');
+    if (tocRule == null) {
+      throw const UnsupportedRuleFailure('ruleBookInfo.tocUrl is required');
+    }
     final document = await _getHtml(book.locator, cancellationToken);
-    final toc = _value(document, _rule(rules, 'tocUrl'));
+    final toc = _value(document, tocRule);
     if (toc == null || toc.isEmpty)
       throw const ParseFailure('Book information has no catalogue URL');
     return NetworkBookDetails(
       book: NetworkBook(
         sourceUrl: book.sourceUrl,
-        title: _value(document, _rule(rules, 'name')) ?? book.title,
+        title: _value(document, nameRule) ?? book.title,
         locator: book.locator,
-        author: _value(document, _rule(rules, 'author')) ?? book.author,
+        author: _value(document, authorRule) ?? book.author,
         coverUrl:
-            _urlOrNull(
-              book.locator,
-              _value(document, _rule(rules, 'coverUrl')),
-            ) ??
+            _urlOrNull(book.locator, _value(document, coverRule)) ??
             book.coverUrl,
-        intro: _value(document, _rule(rules, 'intro')) ?? book.intro,
-        lastChapter:
-            _value(document, _rule(rules, 'lastChapter')) ?? book.lastChapter,
+        intro: _value(document, introRule) ?? book.intro,
+        lastChapter: _value(document, lastChapterRule) ?? book.lastChapter,
       ),
       tocUrl: _resolve(book.locator, toc),
     );
@@ -228,6 +248,11 @@ class StaticSourceEngine {
     final rules = source['ruleContent'];
     if (rules is! Map)
       throw const UnsupportedRuleFailure('ruleContent is required');
+    final contentRule = _rule(rules, 'content');
+    final nextContentRule = _rule(rules, 'nextContentUrl');
+    if (contentRule == null) {
+      throw const UnsupportedRuleFailure('ruleContent.content is required');
+    }
     final pages = <String>[];
     final seenPages = <String>{};
     var page = chapterUrl;
@@ -235,14 +260,14 @@ class StaticSourceEngine {
       cancellationToken?.throwIfCancelled();
       if (!seenPages.add(page.toString())) break;
       final document = await _getHtml(page, cancellationToken);
-      final result = _value(document, _rule(rules, 'content'));
+      final result = _value(document, contentRule);
       if (result == null || result.trim().isEmpty) {
         if (pages.isEmpty)
           throw const ParseFailure('Content rule returned no text');
         break;
       }
       pages.add(result.replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
-      final next = _value(document, _rule(rules, 'nextContentUrl'));
+      final next = _value(document, nextContentRule);
       if (next == null || next.isEmpty) break;
       page = _resolve(page, next);
     }
@@ -272,17 +297,63 @@ class StaticSourceEngine {
     }
   }
 
-  String? _rule(Map rules, String key) =>
-      rules[key] is String ? rules[key] as String : null;
-  dynamic _select(dynamic document, String rule) =>
-      document.querySelectorAll(_selector(rule));
-  String _selector(String rule) =>
-      rule.split('||').first.split('@').first.trim();
+  String? _rule(Map rules, String key) {
+    final raw = rules[key];
+    if (raw == null) return null;
+    if (raw is! String || raw.trim().isEmpty) {
+      throw UnsupportedRuleFailure('$key must be a non-empty static rule');
+    }
+    _validateRule(key, raw);
+    return raw;
+  }
+
+  void _validateSearchTemplate(String template) {
+    if (template.contains('||') ||
+        template.contains('&&') ||
+        template.contains('@js') ||
+        template.contains('<js>')) {
+      throw const UnsupportedRuleFailure('Unsupported search URL expression');
+    }
+  }
+
+  void _validateRule(String key, String raw) {
+    if (raw.contains('||') || raw.contains('&&') || raw.contains('##')) {
+      throw UnsupportedRuleFailure('$key uses an unsupported rule composition');
+    }
+    final at = raw.indexOf('@');
+    if (at < 0) return;
+    final selector = raw.substring(0, at).trim();
+    final suffix = raw.substring(at + 1).trim();
+    if (selector.isEmpty ||
+        !(suffix == 'text' ||
+            suffix == 'textNodes' ||
+            RegExp(r'^[A-Za-z_:][-A-Za-z0-9_:.]*$').hasMatch(suffix) ||
+            RegExp(r'^\[[A-Za-z_:][-A-Za-z0-9_:.]*\]$').hasMatch(suffix))) {
+      throw UnsupportedRuleFailure(
+        '$key is outside the supported CSS rule subset',
+      );
+    }
+  }
+
+  dynamic _select(dynamic document, String rule) {
+    try {
+      return document.querySelectorAll(_selector(rule));
+    } catch (_) {
+      throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
+    }
+  }
+
+  String _selector(String rule) => rule.split('@').first.trim();
   String? _value(dynamic element, String? rule) {
     if (rule == null) return null;
-    final selected = rule.contains('@')
-        ? element.querySelector(_selector(rule)) ?? element
-        : element;
+    dynamic selected;
+    try {
+      selected = rule.contains('@')
+          ? element.querySelector(_selector(rule)) ?? element
+          : element;
+    } catch (_) {
+      throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
+    }
     final suffix = rule.contains('@')
         ? rule.substring(rule.indexOf('@') + 1)
         : 'text';

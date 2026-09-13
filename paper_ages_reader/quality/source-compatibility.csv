@@ -1,0 +1,3 @@
+fingerprint,source_kind,import,search,details,catalogue,content,supported_rule_family,status,date,evidence
+fixture-static-css-v1,sanitized mocked fixture,supported,supported,supported,supported,supported,"GET URL template; CSS selector; text/attribute extraction; relative URLs; bounded pagination",supported,2026-09-13,"test/features/source_engine/static_source_engine_test.dart"
+DA1622CAAFF46C87A26B04A7AF4EAAD6BF4DDAFCB31E7C5655AB09936AD60780,user-supplied Legado JSON,visible-but-disabled,not-run,not-run,not-run,not-run,"contains @js rule",unsupported,2026-09-13,"RuleSafetyPolicy import inspection; no network request is made"

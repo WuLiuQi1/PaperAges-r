@@ -28,4 +28,26 @@ class PersistentDownloadTaskRepository {
     rows.add(task.toJson());
     data['downloadTasks'] = rows;
   });
+
+  /// Commit task reset before removing files. An interrupted cleanup can then
+  /// cause a re-download, but never a false “available offline” indication.
+  Future<void> resetForCacheClear() => _database.transaction((data) {
+    final rows = (data['downloadTasks']! as List)
+        .whereType<Map>()
+        .map((raw) => DownloadTask.fromJson(Map<String, Object?>.from(raw)))
+        .map(
+          (task) => DownloadTask(
+            id: task.id,
+            bookId: task.bookId,
+            sourceUrl: task.sourceUrl,
+            bindingRevision: task.bindingRevision,
+            chapterKeys: task.chapterKeys,
+            chapterUrls: task.chapterUrls,
+            completedKeys: const {},
+            status: DownloadStatus.queued,
+          ).toJson(),
+        )
+        .toList(growable: false);
+    data['downloadTasks'] = rows;
+  });
 }

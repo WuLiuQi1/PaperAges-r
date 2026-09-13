@@ -12,12 +12,22 @@ class AppDatabase {
   final File _file;
   final _changes = StreamController<void>.broadcast();
   Map<String, Object?> _data = _empty();
+  Future<void> _transactionTail = Future<void>.value();
 
   static Future<AppDatabase> defaults() async {
     final directory = await getApplicationDocumentsDirectory();
     final database = AppDatabase._(
       File('${directory.path}${Platform.pathSeparator}paper_ages_state.json'),
     );
+    await database._open();
+    return database;
+  }
+
+  /// Opens an explicit state file. Production uses [defaults]; this entry
+  /// point also lets migration/recovery checks exercise the exact file format
+  /// without substituting an in-memory fake.
+  static Future<AppDatabase> openFile(File file) async {
+    final database = AppDatabase._(file);
     await database._open();
     return database;
   }
@@ -123,7 +133,14 @@ class AppDatabase {
   String? preference(String key) =>
       Map<String, Object?>.from(_data['preferences']! as Map)[key] as String?;
 
-  Future<void> transaction(
+  Future<void> transaction(void Function(Map<String, Object?> next) change) {
+    final result = _transactionTail.then((_) => _applyTransaction(change));
+    // A failed write must not permanently block a later recovery operation.
+    _transactionTail = result.catchError((_) {});
+    return result;
+  }
+
+  Future<void> _applyTransaction(
     void Function(Map<String, Object?> next) change,
   ) async {
     final next = Map<String, Object?>.from(_data)

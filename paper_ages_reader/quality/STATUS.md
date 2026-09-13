@@ -162,3 +162,11 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   work but exited without producing an APK or a diagnostic terminal error.
   It is therefore **not** build evidence and must be rerun from VS Code or a
   visible terminal before Android acceptance.
+- [source-compatibility.csv](source-compatibility.csv) distinguishes the
+  mocked static CSS fixture from the supplied script-bearing JSON. It records
+  no unverified source as compatible and contains no user path, credential or
+  raw source configuration.
+- Database v3→v4 migration now has an on-disk fixture proving existing book,
+  position, source and network-shelf rows survive while binding/task stores
+  are added. Competing source switches are serialized and verified across a
+  reopen; cache cleanup resets durable offline claims before deleting bodies.

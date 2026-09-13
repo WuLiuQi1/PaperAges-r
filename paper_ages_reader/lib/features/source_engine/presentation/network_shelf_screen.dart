@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/storage/app_database.dart';
+import '../data/local_source_repository.dart';
 import '../data/network_shelf_repository.dart';
+import '../domain/source_engine.dart';
+import 'source_search_screen.dart';
 
 /// Read-only network shelf inventory. Opening still depends on a usable stored
 /// source; unavailable sources are shown rather than silently falling back.
@@ -34,6 +37,30 @@ class NetworkShelfScreen extends StatelessWidget {
                   title: Text(book.title),
                   subtitle: Text(book.author ?? book.sourceUrl),
                   trailing: const Icon(Icons.cloud_done_outlined),
+                  onTap: () async {
+                    final source = await LocalSourceRepository(ready.data!)
+                        .findByUrl(book.sourceUrl);
+                    if (!context.mounted) return;
+                    if (source == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('此书源未配置，无法打开网络书籍。')),
+                      );
+                      return;
+                    }
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => NetworkBookScreen(
+                          source: source,
+                          book: NetworkBook(
+                            sourceUrl: book.sourceUrl,
+                            title: book.title,
+                            author: book.author,
+                            locator: book.locator,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             );
