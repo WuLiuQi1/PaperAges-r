@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'features/reader_layout/presentation/page_turn_spike.dart';
+import 'features/library/presentation/local_library_screen.dart';
 
 void main() => runApp(const PaperAgesApp());
 
@@ -22,6 +22,6 @@ class PaperAgesApp extends StatelessWidget {
       ),
       useMaterial3: true,
     ),
-    home: const PageTurnSpike(),
+    home: const LocalLibraryScreen(),
   );
 }

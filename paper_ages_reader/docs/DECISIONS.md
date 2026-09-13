@@ -90,6 +90,15 @@ accepts UTF-8: cancellation and malformed data stay distinguishable from a
 successful import. Common Chinese legacy encoding detection, sandbox copy and
 transactional book persistence remain separate, unimplemented work.
 
+## Android build recovery
+
+The project uses Gradle 9.3.1, as specified by its generated wrapper. The
+earlier 8.14.3 archive is not used by this project. A cross-volume Kotlin
+incremental-cache failure occurred because the Pub cache is on C: and the
+workspace is on F:. `kotlin.incremental=false` is scoped to this project; it
+keeps Kotlin compilation enabled while avoiding the invalid cross-root cache
+path. A single clean Debug assembly then produced a structurally valid APK.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition

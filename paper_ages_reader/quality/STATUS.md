@@ -4,7 +4,7 @@ Last updated: 2026-09-13
 
 | Stage | Status | Evidence / limitation |
 | --- | --- | --- |
-| G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, `dart analyze` and one G0 test pass. Android build is externally blocked; iOS requires macOS. |
+| G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | TXT normalization, grapheme-safe chunking and text-anchor contracts are implemented and tested; import storage, real layout, theme/font, progress and PDF renderer remain. |
 | G3-G6 | Not started | No production online/offline feature, device validation or distribution artifact. |
@@ -15,8 +15,10 @@ Last updated: 2026-09-13
 - `flutter test --reporter expanded`: passed (one test).
 - `dart analyze`: passed with no diagnostics. `flutter analyze` separately
   exposed an analysis-server LSP JSON parse failure in this non-ASCII path.
-- `flutter build apk --debug`: attempted, but the Gradle wrapper timed out
-  downloading its distribution. No APK was generated; this is not a build pass.
+- Gradle 9.3.1 was downloaded and SHA-256 verified. A cross-volume Kotlin
+  incremental-cache failure was fixed by disabling only incremental caching.
+  `:app:assembleDebug --no-daemon` produced `build/app/outputs/flutter-apk/app-debug.apk`;
+  its ZIP/APK contents were inspected. No physical-device install was run.
 - iOS build/device work is blocked on Windows: no macOS/Xcode or Apple device.
 - The supplied reference frames/index were inspected. Full MP4 playback was
   blocked by local-browser policy and no controllable media surface; this is not
@@ -88,3 +90,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   native cross-platform selector. The import boundary recognizes UTF-8,
   cancellation and malformed bytes; three focused tests pass. It is not yet a
   persisted import and does not claim GBK/GB18030 support.
+- `LocalLibraryScreen` wires native TXT selection into the app entry point and
+  opens a normalized-text preview. Import success and cancellation have widget
+  integration evidence. This remains session-only: no durable book record,
+  original-file copy, encoding fallback, real pagination or restore yet.
