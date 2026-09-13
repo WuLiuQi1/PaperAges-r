@@ -3,4 +3,5 @@ T001,In progress,"Flutter project and lockfile exist; Android/iOS builds not run
 T019,Implemented,"PageTurnPolicy and widget drag tests: flutter test, 2026-09-13; device verification pending"
 T059,Implemented,"RuleSafetyPolicy rejects explicit @js and script execution paths: flutter test, 2026-09-13; importer integration pending"
 T060,Implemented,"RuleSafetyPolicy recursively rejects nested JS keys, expressions, libraries and bridges: flutter test, 2026-09-13; parser integration pending"
+T055,Implemented,"SyncWhitelistPolicy unit tests reject bodies, files, fonts, audio, credentials and private locators: flutter test, 2026-09-13; network inspection pending"
 T002-T018,T020-T064,Not run,"No execution evidence"

@@ -49,3 +49,9 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - Android testing is planned for a user-connected device in VS Code. A future
   GitHub macOS workflow can verify an unsigned iOS build, but cannot produce an
   IPA installable on a physical device without valid signing/provisioning.
+
+- `SyncWhitelistPolicy` allows only explicit event metadata, shelf fields,
+  safe source locators and anchors into a future upload outbox. It rejects
+  local files, bodies, fonts, audio, credentials, unknown fields and private
+  locator parameters. Four focused tests pass. R16's network-observation and
+  two-device integration evidence remains Not run.

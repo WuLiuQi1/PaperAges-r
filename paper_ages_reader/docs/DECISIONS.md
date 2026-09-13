@@ -37,6 +37,14 @@ expressions, dynamic libraries and execution bridges, returning paths and
 machine-readable reasons. It performs no parsing, HTTP or WebView work. This
 is intentionally a security boundary, not a claim of Legado rule compatibility.
 
+### G1 sync-whitelist result (2026-09-13)
+
+`SyncWhitelistPolicy` is deny-by-default before an event can enter an upload
+outbox. It permits only explicit immutable-event headers, shelf metadata, safe
+source locators and anchors. It rejects document paths/bodies, fonts, audio,
+credentials, unknown fields and token-bearing locators. It does not yet make an
+HTTP/WebDAV request, merge events or handle server failures.
+
 ## Device and distribution plan
 
 Android device validation will use the user's Windows 11 + VS Code setup when a
