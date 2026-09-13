@@ -5,7 +5,7 @@ Last updated: 2026-09-13
 | Stage | Status | Evidence / limitation |
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, `dart analyze` and one G0 test pass. Android build is externally blocked; iOS requires macOS. |
-| G1 risk spikes | In progress | Text page-turn policy and slide/fade/scroll interaction harness have unit/widget evidence; device/page-curl/PDF/source/audio/WebDAV work remains. |
+| G1 risk spikes | In progress | Text page-turn and source-script preflight have automated evidence; device/page-curl/PDF/source parsing/audio/WebDAV work remains. |
 | G2-G6 | Not started | No production feature, device validation or distribution artifact. |
 
 ## G0 evidence
@@ -40,3 +40,12 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - First test run found two test-harness defects (missing `Key` import and a
   missing MaterialApp/Directionality ancestor). Both were fixed, then all tests
   were rerun successfully.
+
+- `RuleSafetyPolicy` rejects configuration-level JavaScript directives, script
+  markup, expression URLs/eval, dynamic libraries and execution bridges before
+  any source parser/network layer exists. Four focused tests pass. This is
+  partial H01 evidence only: import wiring and HTML-as-data integration are
+  still Not run.
+- Android testing is planned for a user-connected device in VS Code. A future
+  GitHub macOS workflow can verify an unsigned iOS build, but cannot produce an
+  IPA installable on a physical device without valid signing/provisioning.

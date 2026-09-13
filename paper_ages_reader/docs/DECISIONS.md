@@ -29,6 +29,23 @@ share that decision policy where pagination applies. The harness uses fixed
 pages and does not claim real pagination, anchors, device gesture validation or
 the required page-curl effect.
 
+### G1 rule-safety result (2026-09-13)
+
+`RuleSafetyPolicy` is a conservative importer preflight. It recursively checks
+configuration keys and values for JavaScript directives, script markup,
+expressions, dynamic libraries and execution bridges, returning paths and
+machine-readable reasons. It performs no parsing, HTTP or WebView work. This
+is intentionally a security boundary, not a claim of Legado rule compatibility.
+
+## Device and distribution plan
+
+Android device validation will use the user's Windows 11 + VS Code setup when a
+physical device is connected. The project will supply exact debug/profile build
+and test steps at that gate. A future public GitHub repository can use a macOS
+workflow to validate an unsigned iOS build, but an unsigned IPA cannot install
+on a physical iPhone. Physical iOS tests require a valid signing/provisioning
+route or TestFlight; no credentials or repository are created by this project.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition
