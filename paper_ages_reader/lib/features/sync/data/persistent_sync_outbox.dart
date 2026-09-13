@@ -13,6 +13,8 @@ class PersistentSyncOutbox {
   List<SyncEvent> get pending =>
       _database.syncOutbox.map(_codec.decode).toList();
 
+  List<String> get appliedEventIds => _database.syncAppliedEventIds;
+
   Future<void> enqueue(SyncEvent event) async {
     final report = const SyncWhitelistPolicy().inspect(event.toJson());
     if (!report.isSafeToUpload) {
