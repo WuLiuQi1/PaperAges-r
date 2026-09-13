@@ -20,8 +20,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     body: FutureBuilder<AppDatabase>(
       future: _database,
       builder: (context, snapshot) {
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         final statistics = ReadingStatisticsRepository(snapshot.data!);
         final sync = WebDavSyncSettingsRepository(snapshot.data!);
         return ListView(
@@ -80,13 +81,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               try {
                 await repository.setEndpoint(Uri.parse(controller.text));
-                if (context.mounted) Navigator.pop(context);
-                if (mounted) setState(() {});
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+                if (mounted) {
+                  setState(() {});
+                }
               } catch (_) {
-                if (context.mounted)
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('请输入不含凭据或查询参数的 HTTPS 地址')),
                   );
+                }
               }
             },
             child: const Text('保存'),
