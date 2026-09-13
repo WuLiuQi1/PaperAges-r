@@ -6,6 +6,7 @@ T019,Implemented,"PageTurnPolicy and widget drag tests: flutter test, 2026-09-13
 T059,Superseded,"User lifted blanket JS ban 2026-09-13; explicit script runtime added; native Windows QuickJS transformations and selector bridge tested; iOS runtime and pathological scripts remain unverified"
 T060,Superseded,"JS markers no longer disable imports; original native-library bridge integrations remain unsupported; see D04"
 READER-VIEWPORT,Implemented,"build 1.0.0+4: bounded viewport pagination, multi-paragraph flow, UTF-16 anchor persistence, small title and corner controls; layout/turn/theme widget test and PNG reviewed; full Books animation/menu parity remains open"
+READER-BOOKS-CHROME,Implemented,"build 1.0.0+5: entire 52.26s supplied recording reviewed; immersive chrome, expanded menu, contents, in-book search and 3x2 appearance panel implemented; widget navigation and visual PNG checks pass; native iOS typography/blur and page curl pending"
 T055,Implemented,"SyncWhitelistPolicy unit tests reject bodies, files, fonts, audio, credentials and private locators: flutter test, 2026-09-13; network inspection pending"
 T004,Implemented,"Glass reader menu widget opens/closes without changing page content: flutter test, 2026-09-13; device animation stress pending"
 T020,Implemented,"Drag-reactive page-curl CustomPainter widget surface: flutter test, 2026-09-13; device visual/performance validation pending"

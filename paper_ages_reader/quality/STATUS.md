@@ -262,6 +262,28 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   Android installation was performed.
 # Reader / source correction — 1.0.0+4 (2026-09-13)
 
+## Apple Books recording correction — 1.0.0+5
+
+- Reviewed the complete user-supplied 52.26-second HEVC recording and extracted
+  contact sheets plus full-resolution states for reading chrome, expanded menu,
+  contents, in-book search and appearance. These frames, rather than generic
+  Material conventions, are now the implementation reference.
+- Reader chrome toggles independently of page turns. It uses the recording's
+  small remaining-pages header, circular close/menu actions and bottom page
+  label. The expanded trailing menu contains catalogue/progress, in-book search,
+  appearance and four circular secondary actions over a blurred reading page.
+- Added functional TXT chapter-title detection, a chapter/bookmark/highlight
+  contents sheet, in-book result search and jump-to-anchor behavior. Bookmark,
+  annotation, share and audio menu actions remain explicit unfinished messages;
+  they are not presented as working features.
+- Appearance was rebuilt as the large rounded translucent panel in the recording:
+  close/title row, compact controls, slider, six 3x2 presets, font import and a
+  full-width completion action. Draft cancellation remains rollback-safe.
+- Visual regression outputs: `build/ui-review/reader-390.png`,
+  `reader-menu-390.png`, and `reader-theme-390.png`. Test rendering uses a
+  Windows Chinese font, so native iOS font metrics and blur still require device
+  validation.
+
 - Final checks: `dart analyze` clean; 93 tests passed with `NATIVE_JS_TEST=true` and the bundled Windows QuickJS DLL on PATH; Android Debug APK 1.0.0+4 built successfully in 29.6s. iOS CI build/device validation remains unverified.
 
 - Replaced paragraph-as-page with bounded TextPainter viewport pagination; preserves paragraph text, graphemes and UTF-16 saved anchor offsets. Normalization runs off the UI isolate. No invented full-book page count: bottom label reports anchor percentage.

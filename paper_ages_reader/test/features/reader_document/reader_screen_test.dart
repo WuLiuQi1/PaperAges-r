@@ -84,7 +84,8 @@ void main() {
       expect(find.textContaining('这是第0段'), findsOneWidget);
       expect(find.textContaining('这是第1段'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      if (const bool.fromEnvironment('CAPTURE_UI')) {
+      Future<void> capture(String name) async {
+        if (!const bool.fromEnvironment('CAPTURE_UI')) return;
         await tester.runAsync(() async {
           final image =
               await (boundary.currentContext!.findRenderObject()!
@@ -92,19 +93,42 @@ void main() {
                   .toImage();
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
           await Directory('build/ui-review').create(recursive: true);
-          await File('build/ui-review/reader-390.png')
+          await File('build/ui-review/$name-390.png')
               .writeAsBytes(bytes!.buffer.asUint8List());
           image.dispose();
         });
       }
+
+      await capture('reader');
       await tester.runAsync(() => tester.tapAt(const Offset(350, 400)));
       await tester.pumpAndSettle();
       expect(find.textContaining('这是第0段'), findsNothing);
       await tester.tap(find.byTooltip('阅读菜单'));
       await tester.pumpAndSettle();
+      expect(find.text('在图书中搜索'), findsOneWidget);
+      await capture('reader-menu');
       await tester.tap(find.text('主题与设置'));
       await tester.pumpAndSettle();
       expect(find.text('纸张'), findsOneWidget);
+      await capture('reader-theme');
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('关闭主题与设置'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('目录 ·'), findsNothing);
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('目录 ·'));
+      await tester.pumpAndSettle();
+      expect(find.text('章节'), findsOneWidget);
+      expect(find.text('书签'), findsOneWidget);
+      expect(find.text('高亮标记'), findsOneWidget);
+      await tester.tap(find.byTooltip('完成'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('在图书中搜索'));
+      await tester.pumpAndSettle();
+      expect(find.text('在此书中'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
         await tester.pumpWidget(const SizedBox());
