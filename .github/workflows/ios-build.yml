@@ -21,7 +21,7 @@ jobs:
       - run: flutter pub get
       - run: dart analyze
       - run: flutter test
-      - run: flutter build ios --debug --no-codesign
+      - run: flutter build ios --release --no-codesign
       - name: Package unsigned IPA for inspection
         run: |
           rm -rf build/ios/unsigned-ipa

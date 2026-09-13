@@ -39,10 +39,10 @@ On macOS with Xcode and CocoaPods:
 flutter pub get
 dart analyze
 flutter test
-flutter build ios --debug --no-codesign
+flutter build ios --release --no-codesign
 ```
 
-This validates an unsigned iOS build. CI additionally packages
+This validates an unsigned release iOS build. CI additionally packages
 `Payload/Runner.app` as `PaperAges-unsigned.ipa` for inspection/download. It is
 not installable on a physical iPhone: a device install needs an Apple
 signing/provisioning route.
