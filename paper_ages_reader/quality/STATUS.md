@@ -133,3 +133,9 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   rules. Its mocked HTTP fixture covers the full static path plus script
   rejection and cancellation. It does not claim XPath/JSONPath, rule
   expressions, pagination, downloading or any live source compatibility.
+- Ready static sources now open a search UI, then a detail/catalogue route and
+  a readable chapter route. Each chapter checks a source/version/locator-bound
+  cache first, writes new content through a `.part` file and keeps imported
+  books/fonts outside its cleanup scope. The cache's source binding and cleanup
+  isolation have focused automated coverage. Search UI has not been exercised
+  on a physical Android device or against a live compatible source.

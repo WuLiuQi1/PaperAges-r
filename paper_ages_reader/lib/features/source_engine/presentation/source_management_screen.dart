@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/storage/app_database.dart';
 import '../application/legado_source_importer.dart';
 import '../data/local_source_repository.dart';
+import 'source_search_screen.dart';
 
 class SourceManagementScreen extends StatefulWidget {
   const SourceManagementScreen({super.key});
@@ -101,6 +102,13 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                   ),
                   title: Text(source.name),
                   subtitle: Text(unsafe ? '已禁用：含不支持的脚本规则' : source.url),
+                  onTap: unsafe
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SourceSearchScreen(source: source),
+                          ),
+                        ),
                   trailing: unsafe
                       ? IconButton(
                           icon: const Icon(Icons.info_outline),

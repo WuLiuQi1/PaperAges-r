@@ -30,6 +30,13 @@ class LocalSourceRepository {
     });
     return report;
   }
+
+  Future<StoredBookSource?> findByUrl(String url) async {
+    for (final source in _database.sources.map(StoredBookSource.fromRow)) {
+      if (source.url == url) return source;
+    }
+    return null;
+  }
 }
 
 class StoredBookSource {
@@ -38,6 +45,7 @@ class StoredBookSource {
     required this.url,
     required this.state,
     required this.unsafePaths,
+    required this.configuration,
   });
   factory StoredBookSource.fromRow(Map<String, Object?> row) =>
       StoredBookSource(
@@ -50,9 +58,13 @@ class StoredBookSource {
             ((row['unsafePaths'] as List<Object?>?) ?? const <Object?>[])
                 .whereType<String>()
                 .toList(),
+        configuration: Map<String, Object?>.from(
+          jsonDecode(row['configuration']! as String) as Map,
+        ),
       );
   final String name;
   final String url;
   final SourceImportState state;
   final List<String> unsafePaths;
+  final Map<String, Object?> configuration;
 }
