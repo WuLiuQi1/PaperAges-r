@@ -139,3 +139,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   books/fonts outside its cleanup scope. The cache's source binding and cleanup
   isolation have focused automated coverage. Search UI has not been exercised
   on a physical Android device or against a live compatible source.
+- `SourceSwitchService` has an explicit verified-target / compare-and-swap
+  contract: an empty or stale candidate cannot overwrite the current readable
+  binding. Focused tests cover stale and unverified switch rejection. The
+  durable binding UI and cross-source chapter-mapping chooser remain pending.
