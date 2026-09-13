@@ -1,30 +1,60 @@
 # Paper Ages Reader
 
-Flutter scaffold for the Paper Ages iOS and Android reader. The production name,
-bundle identifier, icon, signing identity and distribution method are deliberately
-temporary until the release inputs are supplied.
+Flutter reader for Android and iOS. The release name, bundle identifier, signing identity and store distribution remain intentionally unconfigured.
 
-## Current stage
+## Current delivery state
 
-G0 (engineering audit) is in progress. The project deliberately contains no
-reader, source, TTS, PDF or sync implementation yet: G1 must first validate the
-high-risk architecture assumptions. See [docs/DECISIONS.md](docs/DECISIONS.md)
-and [quality/STATUS.md](quality/STATUS.md).
+The project has local TXT/PDF reading, static safe-source workflows, cache-backed downloads, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
 
-## Toolchain
+This is **not an accepted release**: real Android device tests, iOS/macOS validation, offline lock-screen TTS, a compatible live source, and two-device WebDAV recovery remain required.
 
-- Flutter 3.47.4
-- Dart 3.13.3
-- Android SDK 36.0.0
-- JDK 21.0.12
+## Windows development
 
-Run commands with the SDK installed at `C:\Users\w8852\development\flutter`:
+The verified SDK location on this workstation is `C:\Users\w8852\development\flutter`.
 
 ```powershell
-& 'C:\Users\w8852\development\flutter\bin\flutter.bat' pub get
-& 'C:\Users\w8852\development\flutter\bin\flutter.bat' test
-& 'C:\Users\w8852\development\flutter\bin\flutter.bat' build apk --debug
+$flutter = 'C:\Users\w8852\development\flutter\bin\flutter.bat'
+$dart = 'C:\Users\w8852\development\flutter\bin\dart.bat'
+& $flutter pub get
+& $dart analyze
+& $flutter test
+Push-Location android
+.\gradlew.bat :app:assembleDebug --no-daemon
+Pop-Location
 ```
 
-On macOS with Xcode, run `flutter build ios --debug --no-codesign` for an
-unsigned build validation. It is not an installable IPA.
+The debug APK is generated at `build\app\outputs\apk\debug\app-debug.apk`. Connect an Android device, confirm it appears in `adb devices -l`, then use VS Code or:
+
+```powershell
+& $flutter run
+```
+
+Do not treat a successful build as a device or performance result.
+
+## iOS build-only validation
+
+On macOS with Xcode and CocoaPods:
+
+```bash
+flutter pub get
+dart analyze
+flutter test
+flutter build ios --debug --no-codesign
+```
+
+This validates an unsigned iOS build. It does not produce an IPA installable on a physical iPhone. A device install needs an Apple signing/provisioning route.
+
+## WebDAV safety
+
+Only a credential-free HTTPS directory URL is stored in app settings. Username/password use platform secure storage. Sync events exclude books, chapter bodies, fonts, audio, local paths, themes, statistics, source JSON and credentials. Use a disposable test endpoint before connecting personal storage.
+
+## Known gates
+
+- Android: attach a physical device for reader gestures, PDF, offline voice, lock screen, profile-frame and long-run tests.
+- iOS: macOS/Xcode is required; unsigned CI output is build evidence only.
+- Sources: the provided script-bearing Legado source is intentionally disabled; validate a compatible safe static source end to end.
+- WebDAV: validate 401/403, timeout, quota, partial upload and concurrent devices against a user-controlled endpoint.
+
+## Licensing
+
+Third-party package versions are locked in `pubspec.lock`. Review each dependency license before distribution; no third-party font or brand asset is bundled as a product identity.
