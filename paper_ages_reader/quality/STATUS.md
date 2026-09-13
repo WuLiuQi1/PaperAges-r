@@ -170,3 +170,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   position, source and network-shelf rows survive while binding/task stores
   are added. Competing source switches are serialized and verified across a
   reopen; cache cleanup resets durable offline claims before deleting bodies.
+- Static HTTP decoding now treats declared UTF-8 strictly and routes other
+  declared charsets through the app's native charset converter. A malformed
+  UTF-8 fixture is reported as a parse failure rather than silently producing
+  corrupted chapter text; a live GBK/GB18030 source remains unverified.

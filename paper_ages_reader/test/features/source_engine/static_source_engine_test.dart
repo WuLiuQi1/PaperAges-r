@@ -133,6 +133,25 @@ void main() {
     );
   });
 
+  test(
+    'reports malformed declared UTF-8 instead of silently corrupting text',
+    () async {
+      final engine = StaticSourceEngine(
+        client: MockClient(
+          (_) async => http.Response.bytes(
+            [0xff],
+            200,
+            headers: const {'content-type': 'text/html; charset=utf-8'},
+          ),
+        ),
+      );
+      await expectLater(
+        engine.search(source: staticSource, query: 'x'),
+        throwsA(isA<ParseFailure>()),
+      );
+    },
+  );
+
   test('deduplicates paged chapters and stops a pagination loop', () async {
     var calls = 0;
     final source = Map<String, Object?>.from(staticSource)

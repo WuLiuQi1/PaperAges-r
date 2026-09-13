@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:charset_converter/charset_converter.dart';
 import 'package:crypto/crypto.dart';
 import 'package:html/parser.dart' show parse;
 import 'package:http/http.dart' as http;
@@ -291,9 +292,33 @@ class StaticSourceEngine {
         throw ParseFailure('HTTP ${response.statusCode}');
       if (response.bodyBytes.length > limits.maxResponseBytes)
         throw const ParseFailure('Response exceeds size limit');
-      return parse(response.body);
+      return parse(await _decodeHtml(response));
     } on TimeoutException {
       throw const NetworkTimeoutFailure('Request timed out');
+    }
+  }
+
+  Future<String> _decodeHtml(http.Response response) async {
+    final header = response.headers['content-type'] ?? '';
+    final match = RegExp(
+      r'''charset\s*=\s*["']?([^;\s"']+)''',
+      caseSensitive: false,
+    ).firstMatch(header);
+    final charset = match?.group(1)?.trim();
+    if (charset == null ||
+        charset.isEmpty ||
+        charset.toLowerCase() == 'utf-8' ||
+        charset.toLowerCase() == 'utf8') {
+      try {
+        return utf8.decode(response.bodyBytes);
+      } on FormatException {
+        throw const ParseFailure('Response is not valid UTF-8');
+      }
+    }
+    try {
+      return await CharsetConverter.decode(charset, response.bodyBytes);
+    } catch (_) {
+      throw ParseFailure('Unsupported or invalid response charset: $charset');
     }
   }
 
