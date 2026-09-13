@@ -24,7 +24,9 @@ class LocalLibraryScreen extends StatefulWidget {
 
 class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
   late final Future<LocalLibraryRepository> _repositoryFuture;
+  final _searchController = TextEditingController();
   var _importing = false;
+  var _searching = false;
 
   @override
   void initState() {
@@ -32,6 +34,12 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
     _repositoryFuture = widget.repository != null
         ? Future.value(widget.repository)
         : AppDatabase.defaults().then(LocalLibraryRepository.new);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _importBook(LocalLibraryRepository repository) async {
@@ -81,8 +89,40 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Paper Ages'),
+      title: _searching
+          ? TextField(
+              key: const Key('library-search-field'),
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '搜索本地书库',
+                border: InputBorder.none,
+              ),
+              onChanged: (_) => setState(() {}),
+            )
+          : const Text('Paper Ages'),
       actions: [
+        if (_searching)
+          IconButton(
+            tooltip: '清除搜索',
+            onPressed: () => setState(_searchController.clear),
+            icon: const Icon(Icons.clear),
+          )
+        else
+          IconButton(
+            tooltip: '搜索本地书库',
+            onPressed: () => setState(() => _searching = true),
+            icon: const Icon(Icons.search),
+          ),
+        if (_searching)
+          IconButton(
+            tooltip: '取消搜索',
+            onPressed: () => setState(() {
+              _searchController.clear();
+              _searching = false;
+            }),
+            icon: const Icon(Icons.close),
+          ),
         IconButton(
           tooltip: '阅读统计',
           onPressed: () => Navigator.of(context).push(
@@ -134,9 +174,17 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final books = snapshot.data!;
+            final query = _searchController.text.trim().toLowerCase();
+            final books = snapshot.data!
+                .where(
+                  (book) =>
+                      query.isEmpty || book.title.toLowerCase().contains(query),
+                )
+                .toList(growable: false);
             if (books.isEmpty) {
-              return const Center(child: Text('导入 TXT 或 PDF 开始阅读'));
+              return Center(
+                child: Text(query.isEmpty ? '导入 TXT 或 PDF 开始阅读' : '没有匹配的本地书籍'),
+              );
             }
             return GridView.builder(
               padding: const EdgeInsets.all(16),
