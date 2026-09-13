@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/storage/app_database.dart';
 import '../../library/data/file_selector_book_picker.dart';
 import '../../library/data/local_library_repository.dart';
 import '../../library/domain/library_book.dart';
+import '../../statistics/application/reading_session_recorder.dart';
+import '../../statistics/data/reading_statistics_repository.dart';
 import '../domain/normalized_text_document.dart';
 
 class ReaderDocumentScreen extends StatefulWidget {
@@ -24,7 +28,8 @@ class ReaderDocumentScreen extends StatefulWidget {
   State<ReaderDocumentScreen> createState() => _ReaderDocumentScreenState();
 }
 
-class _ReaderDocumentScreenState extends State<ReaderDocumentScreen> {
+class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
+    with WidgetsBindingObserver {
   final _controller = PageController();
   NormalizedTextDocument? _document;
   String? _error;
@@ -32,10 +37,12 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen> {
   double _lineHeight = 1.7;
   String? _fontFamily;
   int _revision = 0;
+  ReadingSessionRecorder? _statistics;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restore();
   }
 
@@ -59,6 +66,10 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen> {
         _fontSize = double.tryParse(savedSize ?? '') ?? _fontSize;
         _lineHeight = double.tryParse(savedLineHeight ?? '') ?? _lineHeight;
       });
+      final database = await AppDatabase.defaults();
+      _statistics = ReadingSessionRecorder(
+        ReadingStatisticsRepository(database),
+      )..resumeReading();
       final target = (position?.blockIndex ?? 0).clamp(
         0,
         document.blocks.length - 1,
@@ -71,6 +82,26 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen> {
     } catch (error) {
       if (mounted) setState(() => _error = '无法打开此书：$error');
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final recorder = _statistics;
+    if (recorder == null) return;
+    if (state == AppLifecycleState.resumed) {
+      recorder.resumeReading();
+    } else {
+      unawaited(recorder.pauseReading());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    final recorder = _statistics;
+    if (recorder != null) unawaited(recorder.pauseReading());
+    _controller.dispose();
+    super.dispose();
   }
 
   Future<void> _savePage(int index) async {
