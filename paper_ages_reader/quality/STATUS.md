@@ -126,3 +126,10 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   source: its `@js:` cover rules are retained for transparent reporting and its
   entry is disabled. No code path executes JavaScript or sends source data to
   the network. Seven source-engine tests and static analysis pass.
+- `StaticSourceEngine` now has a deliberately limited, non-WebView execution
+  path for CSS selectors and text/attribute extraction: search → details →
+  catalogue → content. It enforces request cancellation, a response-size cap,
+  a timeout, relative-link resolution and pre-request rejection of dynamic
+  rules. Its mocked HTTP fixture covers the full static path plus script
+  rejection and cancellation. It does not claim XPath/JSONPath, rule
+  expressions, pagination, downloading or any live source compatibility.
