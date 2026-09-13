@@ -191,3 +191,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   rather than silently changing rules under a live binding. The import report
   and UI identify retained entries; a user must use the verified source-switch
   flow to change that source for an active book.
+- Adding a network book now creates its initial source/chapter binding in the
+  same local transaction as shelf metadata. Re-adding it cannot reverse a
+  later switch, and the network shelf opens the persisted binding first rather
+  than implicitly returning to its original source.

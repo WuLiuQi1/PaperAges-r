@@ -158,6 +158,34 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
     }
   }
 
+  Future<void> _addToShelf() async {
+    try {
+      final chapters = await _chapters;
+      if (chapters == null || chapters.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('目录为空，无法建立网络书架绑定。')));
+        }
+        return;
+      }
+      final database = await AppDatabase.defaults();
+      await NetworkShelfRepository(database).add(
+        book: widget.book,
+        sourceUrl: widget.source.url,
+        initialChapter: chapters.first,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已加入网络书架')));
+    } on SourceEngineFailure catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('目录不可用，未加入书架：${error.message}')));
+      }
+    }
+  }
+
   Future<void> _downloadAll(List<SourceChapter> chapters) async {
     if (chapters.isEmpty) return;
     final database = await AppDatabase.defaults();
@@ -216,14 +244,7 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
         IconButton(
           tooltip: '加入书架',
           icon: const Icon(Icons.library_add_outlined),
-          onPressed: () async {
-            final database = await AppDatabase.defaults();
-            await NetworkShelfRepository(database)
-                .add(book: widget.book, sourceUrl: widget.source.url);
-            if (!mounted) return;
-            ScaffoldMessenger.of(this.context)
-                .showSnackBar(const SnackBar(content: Text('已加入网络书架')));
-          },
+          onPressed: _addToShelf,
         ),
       ],
     ),

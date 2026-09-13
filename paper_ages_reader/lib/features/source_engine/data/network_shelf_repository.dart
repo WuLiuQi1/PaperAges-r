@@ -7,24 +7,55 @@ class NetworkShelfRepository {
   Stream<List<NetworkShelfBook>> watchBooks() => _database
       .watchNetworkBooks()
       .map((rows) => rows.map(NetworkShelfBook.fromRow).toList());
-  Future<void> add({required NetworkBook book, required String sourceUrl}) =>
-      _database.transaction((next) {
-        final books = List<Object?>.from(next['networkBooks']! as List);
-        books.removeWhere(
-          (row) =>
-              row is Map &&
-              row['sourceUrl'] == sourceUrl &&
-              row['locator'] == book.locator.toString(),
-        );
-        books.add({
-          'title': book.title,
-          'author': book.author,
-          'sourceUrl': sourceUrl,
-          'locator': book.locator.toString(),
-          'bindingRevision': 1,
-        });
-        next['networkBooks'] = books;
-      });
+  static String bookIdFor({required String sourceUrl, required Uri locator}) =>
+      '$sourceUrl|$locator';
+
+  Future<void> add({
+    required NetworkBook book,
+    required String sourceUrl,
+    required SourceChapter initialChapter,
+  }) => _database.transaction((next) {
+    final books = List<Object?>.from(next['networkBooks']! as List);
+    books.removeWhere(
+      (row) =>
+          row is Map &&
+          row['sourceUrl'] == sourceUrl &&
+          row['locator'] == book.locator.toString(),
+    );
+    books.add({
+      'title': book.title,
+      'author': book.author,
+      'sourceUrl': sourceUrl,
+      'locator': book.locator.toString(),
+      'bindingRevision': 1,
+    });
+    next['networkBooks'] = books;
+    final bookId = bookIdFor(sourceUrl: sourceUrl, locator: book.locator);
+    final bindings = Map<String, Object?>.from(
+      next['sourceBindings'] as Map? ?? const <String, Object?>{},
+    );
+    // Re-adding a shelf entry must not undo a verified later source
+    // switch. Initial binding is created only once for this identity.
+    if (!bindings.containsKey(bookId)) {
+      bindings[bookId] = {
+        'bookId': bookId,
+        'sourceUrl': sourceUrl,
+        'locator': initialChapter.locator.toString(),
+        'chapterKey': initialChapter.key,
+        'revision': 1,
+      };
+      final positions = Map<String, Object?>.from(next['positions']! as Map);
+      positions[bookId] = {
+        'sourceUrl': sourceUrl,
+        'locator': initialChapter.locator.toString(),
+        'chapterKey': initialChapter.key,
+        'bindingRevision': 1,
+        'updatedAtMillis': DateTime.now().millisecondsSinceEpoch,
+      };
+      next['positions'] = positions;
+    }
+    next['sourceBindings'] = bindings;
+  });
 }
 
 class NetworkShelfBook {
