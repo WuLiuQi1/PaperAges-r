@@ -222,10 +222,19 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - iOS declares the audio background mode. This is configuration only: there is
   no native AVSpeech/Android media-service adapter yet, therefore no claim is
   made for background, lock-screen, interruption or headset behavior.
+- `WebDavEventTransport` uses per-device immutable paths, conditional `PUT`,
+  authenticated readback and payload-hash decoding before an outbox event can
+  be considered uploaded. `PROPFIND` accepts namespace-prefixed DAV `href`
+  entries but filters strictly to this app's JSON event directory. HTTP 412,
+  malformed remote data and unsafe path components are returned as failures;
+  the outbox is consequently retained for retry. Credentials are an ephemeral
+  injected value only, not database state; platform secure-storage wiring and
+  a user-supplied endpoint are still pending.
 - On 2026-09-13, `dart analyze` completed with no diagnostics and `flutter
-  test` passed 69 tests, including G4 speech anchoring, interval-union,
-  payload-tampering and persisted-outbox cases. No WebDAV endpoint, Android
-  device, iOS/macOS build or two-device conflict recovery has been run.
+  test` passed 73 tests, including G4 speech anchoring, interval-union,
+  payload-tampering, persisted-outbox and mocked WebDAV protocol cases. No
+  real WebDAV endpoint, Android device, iOS/macOS build or two-device conflict
+  recovery has been run.
 - `:app:assembleDebug --no-daemon` also completed successfully after the G4
   changes. It is a compile/package check only; Gradle emitted existing AGP /
   Kotlin deprecation and SDK-XML compatibility warnings, and no physical
