@@ -54,6 +54,27 @@ workflow to validate an unsigned iOS build, but an unsigned IPA cannot install
 on a physical iPhone. Physical iOS tests require a valid signing/provisioning
 route or TestFlight; no credentials or repository are created by this project.
 
+## Dependency review for native risk tests
+
+The review on 2026-09-13 retained two candidates without adding either to the
+lockfile yet: `pdfrx 2.6.1` (MIT; Android/iOS support; its Windows native build
+requires Developer Mode) and `audio_service 0.18.19` plus `flutter_tts 4.2.5`
+(MIT; Android/iOS background-media and system-TTS candidates). Their public
+documentation requires platform configuration and device validation; package
+availability is not treated as proof of PDF rendering or locked-screen TTS.
+They will be selected only in the subsequent native implementation step after
+the Android build network path and connected-device test route are available.
+
+### G1 audio and PDF contract result (2026-09-13)
+
+`AudioSessionStateMachine` admits only installed offline voices and uses a
+monotonic playback generation, so obsolete callbacks cannot restart playback
+after stop, interruption or a newer session. `PdfAnchor` stores document
+identity, a zero-based page and normalized viewport coordinates; the gesture
+policy gives zoom/pan priority while enlarged or multi-touch. These are tested
+domain contracts, not claims that a platform synthesizer ran in the background
+or that a native PDF page rendered.
+
 ## D03: Data authority
 
 A Book UUID is independent of source and local path. One ReadingPosition

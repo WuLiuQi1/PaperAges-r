@@ -5,7 +5,7 @@ Last updated: 2026-09-13
 | Stage | Status | Evidence / limitation |
 | --- | --- | --- |
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, `dart analyze` and one G0 test pass. Android build is externally blocked; iOS requires macOS. |
-| G1 risk spikes | In progress | Text page-turn and source-script preflight have automated evidence; device/page-curl/PDF/source parsing/audio/WebDAV work remains. |
+| G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2-G6 | Not started | No production feature, device validation or distribution artifact. |
 
 ## G0 evidence
@@ -55,3 +55,23 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   local files, bodies, fonts, audio, credentials, unknown fields and private
   locator parameters. Four focused tests pass. R16's network-observation and
   two-device integration evidence remains Not run.
+
+- `ImmutableEventMerger` preserves concurrent branches based on parent event
+  IDs, deduplicates repeated events, and does not silently resolve concurrent
+  delete/read activity. Four focused tests pass; WebDAV transport and server
+  integration remain Not run.
+- `AudioSessionStateMachine` verifies offline-voice gating and stale callback
+  invalidation. `PdfAnchor`/`PdfInteractionPolicy` verify stable restoration
+  fields and zoom-pan priority. Six focused tests pass. Background/lock-screen
+  audio and native PDF rendering are Blocked pending Android device access;
+  iOS also requires macOS tooling and signed-device conditions.
+
+## G1 blocked gates
+
+| Gate | Status | Needed evidence |
+| --- | --- | --- |
+| Android APK/native-plugin build | Blocked | Gradle distribution download timed out. Restore Maven/Gradle access, then build debug/profile APK. |
+| Android gesture/PDF/audio | Blocked | User-connected device and VS Code run session. |
+| Android offline/lock-screen TTS | Blocked | Installed offline voice, flight-mode and media-control device tests. |
+| iOS PDF/audio/build | Blocked | macOS/Xcode; unsigned CI build is build-only, physical device needs signing. |
+| WebDAV transport/concurrency | Blocked | Controlled WebDAV endpoint and two independently persisted device states. |
