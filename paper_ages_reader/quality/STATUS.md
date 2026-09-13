@@ -174,3 +174,7 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   declared charsets through the app's native charset converter. A malformed
   UTF-8 fixture is reported as a parse failure rather than silently producing
   corrupted chapter text; a live GBK/GB18030 source remains unverified.
+- Download-manager integration fixtures now perform mocked request → parser →
+  cache → durable task transitions. They prove a binding-revision mismatch
+  makes zero requests, and cancellation both during the first persistence
+  window and during an active response leaves no completed key or cache body.

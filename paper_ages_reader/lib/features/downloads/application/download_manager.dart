@@ -3,13 +3,20 @@ import '../data/persistent_download_task_repository.dart';
 import '../domain/download_task.dart';
 import '../../source_engine/domain/source_engine.dart';
 
+typedef SourceEngineFactory = StaticSourceEngine Function();
+
 /// Sequential, resumable downloader.  A task is durably updated after each
 /// chapter; cancelling a running request prevents subsequent writes while
 /// preserving already verified cache entries.
 class DownloadManager {
-  DownloadManager(this._repository, this._cache);
+  DownloadManager(
+    this._repository,
+    this._cache, {
+    SourceEngineFactory? engineFactory,
+  }) : _engineFactory = engineFactory ?? StaticSourceEngine.new;
   final PersistentDownloadTaskRepository _repository;
   final ChapterCache _cache;
+  final SourceEngineFactory _engineFactory;
   final Map<String, SourceCancellationToken> _cancellations = {};
   final _machine = const DownloadTaskStateMachine();
 
@@ -28,12 +35,17 @@ class DownloadManager {
       saved,
       currentBindingRevision: currentBindingRevision,
     );
-    await _repository.upsert(task);
-    if (task.status != DownloadStatus.running) return;
-
+    // Register before the first await so a UI cancellation cannot fall into
+    // the queued→running persistence window.
     final token = SourceCancellationToken();
     _cancellations[task.id] = token;
-    final engine = StaticSourceEngine();
+    await _repository.upsert(task);
+    if (task.status != DownloadStatus.running) {
+      _cancellations.remove(task.id);
+      return;
+    }
+
+    final engine = _engineFactory();
     try {
       for (final key in task.chapterKeys) {
         token.throwIfCancelled();
