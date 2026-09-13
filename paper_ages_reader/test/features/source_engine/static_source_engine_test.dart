@@ -81,7 +81,7 @@ void main() {
     },
   );
 
-  test('rejects JS before issuing any HTTP request', () async {
+  test('rejects missing mandatory rules before any HTTP request', () async {
     var calls = 0;
     final engine = StaticSourceEngine(
       client: MockClient((_) async {
@@ -110,7 +110,7 @@ void main() {
       );
       final unsupported = Map<String, Object?>.from(staticSource)
         ..['ruleSearch'] = {
-          'bookList': '.book||.legacy',
+          'bookList': '.book&&.legacy',
           'name': 'a@text',
           'bookUrl': 'a@href',
         };

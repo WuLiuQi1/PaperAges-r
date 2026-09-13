@@ -1,8 +1,7 @@
 /// A deliberately conservative preflight for imported source configuration.
 ///
-/// This policy does not parse or execute a book-source rule. Its sole job is to
-/// reject known dynamic-execution entry points before an importer can hand a
-/// configuration to any network or extraction implementation.
+/// This policy records dynamic entry points without executing them. JS markers
+/// are informational; canExecute only excludes native-library dependencies.
 class RuleSafetyPolicy {
   const RuleSafetyPolicy();
 
@@ -77,6 +76,10 @@ class RuleSafetyReport {
   final List<RuleSafetyIssue> issues;
 
   bool get isSafe => issues.isEmpty;
+  // JS markers are informational after the user's 2026-09-13 scope change.
+  bool get canExecute => !issues.any(
+    (issue) => issue.code == RuleSafetyCode.dynamicLibraryOrBridge,
+  );
 }
 
 class RuleSafetyIssue {

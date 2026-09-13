@@ -260,3 +260,13 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   changes. It is a compile/package check only; Gradle emitted existing AGP /
   Kotlin deprecation and SDK-XML compatibility warnings, and no physical
   Android installation was performed.
+# Reader / source correction — 1.0.0+4 (2026-09-13)
+
+- Final checks: `dart analyze` clean; 93 tests passed with `NATIVE_JS_TEST=true` and the bundled Windows QuickJS DLL on PATH; Android Debug APK 1.0.0+4 built successfully in 29.6s. iOS CI build/device validation remains unverified.
+
+- Replaced paragraph-as-page with bounded TextPainter viewport pagination; preserves paragraph text, graphemes and UTF-16 saved anchor offsets. Normalization runs off the UI isolate. No invented full-book page count: bottom label reports anchor percentage.
+- Reader now has a small centered title, corner close/menu buttons, full-height justified text, six paper presets and cancelable size/spacing drafts. Reviewed `build/ui-review/reader-390.png`; this Windows-font screenshot is not iPhone proof. Full Books menus, search/catalogue sheet, page-curl animation and PDF parity remain unfinished.
+- Superseded blanket JS disablement per latest user request. Added explicit @js:/<js> evaluation, result transforms, java.getString and search variables; existing JS-only disabled rows are eligible without reimport. Added fallback/index/regex rules used by the supplied source. Native Windows QuickJS tests exercise both result transforms and the real content extraction path.
+- Full Legado Java bridge/jsLib/login/WebView/request options are NOT implemented. Supplied source rule shapes pass offline fixtures; live site and iPhone source flow not verified. iOS JavaScriptCore interruption and native execution remain open. Bundled QuickJS lacks a memory-limit symbol; no memory-bound claim is made.
+- Fixed the plugin-specific Android Java/Kotlin target mismatch after AGP configuration; APK rebuild succeeded before final version increment. `flutter_js` emits a future Kotlin-plugin migration warning. Final rerun results are recorded in the handoff.
+- Reader reuses its repository database for statistics; database close now waits for queued writes. Reader widget regression includes page turning and theme opening; its cleanup exposed and helped fix pending-write handling.

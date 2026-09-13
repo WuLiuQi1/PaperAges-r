@@ -211,5 +211,8 @@ class AppDatabase {
     await temporary.rename(_file.path);
   }
 
-  Future<void> close() => _changes.close();
+  Future<void> close() async {
+    await _transactionTail;
+    await _changes.close();
+  }
 }

@@ -12,14 +12,17 @@ class SavedReadingPosition {
   const SavedReadingPosition({
     required this.blockIndex,
     required this.revision,
+    this.graphemeOffset = 0,
   });
   final int blockIndex;
   final int revision;
+  final int graphemeOffset;
 }
 
 class LocalLibraryRepository {
   LocalLibraryRepository(this._database);
   final AppDatabase _database;
+  AppDatabase get database => _database;
 
   List<LibraryBook> get recentBooks {
     final books = _database.books.map(_bookFromRow).toList();
@@ -127,6 +130,7 @@ class LocalLibraryRepository {
     return SavedReadingPosition(
       blockIndex: row['blockIndex'] as int? ?? 0,
       revision: row['revision'] as int? ?? 0,
+      graphemeOffset: row['graphemeOffset'] as int? ?? 0,
     );
   }
 

@@ -1,5 +1,27 @@
 # Engineering decisions
 
+## D04: User-authorized script sources and viewport reading (2026-09-13)
+
+The user's latest request supersedes H01's blanket JavaScript prohibition.
+Imports retain script rules and no longer disable a source simply for JS.
+`flutter_js` 0.8.7 (MIT, https://pub.dev/packages/flutter_js) supplies QuickJS
+on Android/Windows and system JavaScriptCore on iOS. Initial support covers
+explicit @js:/<js> expressions, result postprocessing, search key/page and
+java.getString. This is NOT complete Legado compatibility: jsLib, arbitrary
+Java APIs, authentication, WebView and request options still need implementation.
+Native-library bridges remain unsupported. HTML scripts are not auto-executed.
+QuickJS requests a 1-second execution bound. Bundled Android and Windows native
+libraries lack jsSetMemoryLimit, so a memory-limit claim would be incorrect.
+The iOS runtime does
+not expose equivalent interruption controls; pathological-script handling and
+iOS native execution remain release blockers, not verified safety claims.
+
+TXT rendering now measures bounded text windows using the viewport's actual
+text style and scale. A paragraph is no longer a page. Progress is an anchor
+percentage, not a fabricated total page count. UTF-16 paragraph offsets persist
+across reopening and appearance changes. Exact Books animation/theme parity
+is not implied by this replacement.
+
 ## D01: Baseline and project identity
 
 - Date: 2026-09-13; requirements: R01, H02.

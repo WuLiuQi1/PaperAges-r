@@ -12,12 +12,12 @@ void main() {
     expect(result.imported.single.state, SourceImportState.ready);
   });
 
-  test('keeps a JavaScript-bearing source visible but disabled', () {
+  test('JS source remains eligible after the user lifted the script ban', () {
     final result = importer.importJson(
       '[{"bookSourceName":"legacy","bookSourceUrl":"https://example.test","ruleSearch":{"cover":"@js: result"}}]',
     );
     final source = result.imported.single;
-    expect(source.state, SourceImportState.disabledUnsafeRule);
+    expect(source.state, SourceImportState.ready);
     expect(source.unsafePaths, contains(r'$.ruleSearch.cover'));
     expect(source.rawConfiguration['bookSourceName'], 'legacy');
   });

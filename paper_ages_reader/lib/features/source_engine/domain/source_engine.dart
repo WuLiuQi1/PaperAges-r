@@ -9,6 +9,7 @@ import 'package:html/parser.dart' show parse;
 import 'package:http/http.dart' as http;
 
 import 'rule_safety_policy.dart';
+import 'source_javascript.dart';
 
 sealed class SourceEngineFailure implements Exception {
   const SourceEngineFailure(this.message);
@@ -92,9 +93,11 @@ class StaticSourceEngine {
   StaticSourceEngine({
     http.Client? client,
     this.limits = const SourceEngineLimits(),
+    this.evaluateScript = evaluateSourceScript,
   }) : _client = client ?? http.Client();
   final http.Client _client;
   final SourceEngineLimits limits;
+  final SourceScriptEvaluator evaluateScript;
 
   Future<List<NetworkBook>> search({
     required Map<String, Object?> source,
@@ -109,7 +112,15 @@ class StaticSourceEngine {
       throw const UnsupportedRuleFailure(
         'Static searchUrl and ruleSearch are required',
       );
-    _validateSearchTemplate(template);
+    final script = _scriptParts(template);
+    final searchTemplate = script == null
+        ? template
+        : _runScript(script.$2, script.$1, {
+            'key': query,
+            'page': 1,
+            'baseUrl': _sourceUri(source).toString(),
+          }, (_) => null).toString();
+    _validateSearchTemplate(searchTemplate);
     final listSelector = _rule(rules, 'bookList');
     final nameRule = _rule(rules, 'name');
     final bookUrlRule = _rule(rules, 'bookUrl');
@@ -125,7 +136,9 @@ class StaticSourceEngine {
     final document = await _getHtml(
       _resolve(
         _sourceUri(source),
-        template.replaceAll('{{key}}', Uri.encodeQueryComponent(query)),
+        searchTemplate
+            .replaceAll('{{key}}', Uri.encodeQueryComponent(query))
+            .replaceAll('{{page}}', '1'),
       ),
       cancellationToken,
     );
@@ -277,7 +290,9 @@ class StaticSourceEngine {
 
   void _ensureSafe(Map<String, Object?> source) {
     final report = const RuleSafetyPolicy().inspect(source);
-    if (!report.isSafe)
+    if (report.issues.any(
+      (issue) => issue.code == RuleSafetyCode.dynamicLibraryOrBridge,
+    ))
       throw UnsupportedRuleFailure(
         'Source contains forbidden dynamic rule: ${report.issues.first.path}',
       );
@@ -342,7 +357,30 @@ class StaticSourceEngine {
   }
 
   void _validateRule(String key, String raw) {
-    if (raw.contains('||') || raw.contains('&&') || raw.contains('##')) {
+    final script = _scriptParts(raw);
+    if (script != null) {
+      if (script.$1.isNotEmpty) _validateRule(key, script.$1);
+      return;
+    }
+    if (raw.contains('||')) {
+      for (final part in raw.split('||')) {
+        _validateRule(key, part);
+      }
+      return;
+    }
+    if (raw.contains('##')) {
+      final parts = raw.split('##');
+      if (parts.length < 3)
+        throw UnsupportedRuleFailure('$key has incomplete regex');
+      if (parts.first.isNotEmpty) _validateRule(key, parts.first);
+      try {
+        RegExp(parts[1]);
+      } catch (_) {
+        throw UnsupportedRuleFailure('$key has invalid regex');
+      }
+      return;
+    }
+    if (raw.contains('&&')) {
       throw UnsupportedRuleFailure('$key uses an unsupported rule composition');
     }
     final at = raw.indexOf('@');
@@ -361,8 +399,34 @@ class StaticSourceEngine {
   }
 
   dynamic _select(dynamic document, String rule) {
+    final script = _scriptParts(rule);
+    if (script != null) {
+      final result = _runScript(
+        script.$2,
+        document.outerHtml,
+        {},
+        (rule) => _value(document, rule),
+      );
+      if (result is! List)
+        throw const ParseFailure('JS list rule must return an array');
+      return result.map((item) => parse(item.toString()).body!).toList();
+    }
+    if (rule.contains('||')) {
+      for (final part in rule.split('||')) {
+        final selected = _select(document, part) as List;
+        if (selected.isNotEmpty) return selected;
+      }
+      return [];
+    }
     try {
-      return document.querySelectorAll(_selector(rule));
+      final selector = _selector(rule);
+      final has = RegExp(r'^(.+):has\((.+)\)$').firstMatch(selector);
+      if (has != null) {
+        return (document.querySelectorAll(has.group(1)!) as List)
+            .where((dynamic node) => node.querySelector(has.group(2)!) != null)
+            .toList();
+      }
+      return document.querySelectorAll(selector);
     } catch (_) {
       throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
     }
@@ -371,11 +435,61 @@ class StaticSourceEngine {
   String _selector(String rule) => rule.split('@').first.trim();
   String? _value(dynamic element, String? rule) {
     if (rule == null) return null;
+    final script = _scriptParts(rule);
+    if (script != null) {
+      final initial = script.$1.isEmpty
+          ? element.outerHtml
+          : _value(element, script.$1);
+      return _runScript(
+        script.$2,
+        initial,
+        {},
+        (rule) => _value(element, rule),
+      )?.toString();
+    }
+    if (rule.contains('||')) {
+      for (final part in rule.split('||')) {
+        final value = _value(element, part);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      return null;
+    }
+    if (rule.contains('##')) {
+      final parts = rule.split('##');
+      final input = parts.first.isEmpty
+          ? element.outerHtml.toString()
+          : (_value(element, parts.first) ?? '');
+      final pattern = RegExp(parts[1]);
+      String replacement(Match match) =>
+          parts[2].replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
+            final index = int.parse(group[1]!);
+            return index <= match.groupCount ? match.group(index) ?? '' : '';
+          });
+      if (parts.length > 3 && parts[3] == '#') {
+        final match = pattern.firstMatch(input);
+        return match == null ? '' : replacement(match);
+      }
+      return input.replaceAllMapped(pattern, replacement);
+    }
+    if (rule == 'href' || rule == 'src' || rule == 'content')
+      return element.attributes[rule]?.toString().trim();
     dynamic selected;
     try {
-      selected = rule.contains('@')
-          ? element.querySelector(_selector(rule)) ?? element
-          : element;
+      if (rule.contains('@')) {
+        var selector = _selector(rule);
+        final indexed = RegExp(r'^(.*)\.(\d+)$').firstMatch(selector);
+        if (indexed != null) {
+          selector = indexed[1]!;
+          final nodes = element.querySelectorAll(selector) as List;
+          final index = int.parse(indexed[2]!);
+          selected = index < nodes.length ? nodes[index] : null;
+        } else {
+          selected = element.querySelector(selector);
+        }
+      } else {
+        selected = element;
+      }
+      if (selected == null) return null;
     } catch (_) {
       throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
     }
@@ -397,4 +511,28 @@ class StaticSourceEngine {
   String? _urlOrNull(Uri base, String? raw) =>
       raw == null || raw.isEmpty ? null : _resolve(base, raw).toString();
   void close() => _client.close();
+
+  (String, String)? _scriptParts(String rule) {
+    final marker = RegExp(r'@js:|<js>', caseSensitive: false).firstMatch(rule);
+    if (marker == null) return null;
+    return (
+      rule.substring(0, marker.start).trim(),
+      rule
+          .substring(marker.end)
+          .replaceFirst(RegExp(r'</js>\s*$', caseSensitive: false), ''),
+    );
+  }
+
+  Object? _runScript(
+    String code,
+    Object? result,
+    Map<String, Object?> variables,
+    String? Function(String) getString,
+  ) {
+    try {
+      return evaluateScript(code, result, variables, getString);
+    } catch (error) {
+      throw ParseFailure('JavaScript 规则执行失败：$error');
+    }
+  }
 }

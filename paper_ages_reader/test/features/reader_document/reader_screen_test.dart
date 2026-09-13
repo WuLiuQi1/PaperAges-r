@@ -1,0 +1,115 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:paper_ages_reader/core/storage/app_database.dart';
+import 'package:paper_ages_reader/features/library/data/local_library_repository.dart';
+import 'package:paper_ages_reader/features/library/domain/library_book.dart';
+import 'package:paper_ages_reader/features/reader_document/presentation/reader_document_screen.dart';
+import 'package:paper_ages_reader/features/reader_document/domain/normalized_text_document.dart';
+
+class _MemoryRepository extends LocalLibraryRepository {
+  _MemoryRepository(super.database, this.text);
+  final String text;
+  @override
+  Future<String> readText(LibraryBook book) async => text;
+}
+
+void main() {
+  testWidgets(
+    'reader flows paragraphs, turns, and opens theme panel without AppBar',
+    (tester) async {
+      final folder = Directory.systemTemp.createTempSync('paper-reader-test-');
+      addTearDown(() => folder.deleteSync(recursive: true));
+      final file = File('${folder.path}/book.txt')
+        ..writeAsStringSync(
+          List.generate(
+            100,
+            (i) => '　　清晨的光线穿过窗户，照在摊开的书页上。人们沿着河岸慢慢走过，远处传来钟声。这是第$i段。',
+          ).join('\n\n'),
+        );
+      final db = await tester.runAsync(
+        () => AppDatabase.openFile(File('${folder.path}/state.json')),
+      );
+      addTearDown(() => db!.close());
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      if (const bool.fromEnvironment('CAPTURE_UI')) {
+        await tester.runAsync(() async {
+          final data = ByteData.sublistView(
+            await File('C:/Windows/Fonts/msyh.ttc').readAsBytes(),
+          );
+          await (FontLoader('ReaderTest')..addFont(Future.value(data))).load();
+          await (FontLoader('MaterialIcons')
+                ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf')))
+              .load();
+        });
+      }
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: boundary,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              fontFamily: const bool.fromEnvironment('CAPTURE_UI')
+                  ? 'ReaderTest'
+                  : null,
+            ),
+            home: ReaderDocumentScreen(
+              book: LibraryBook(
+                id: 'reader',
+                kind: LibraryBookKind.text,
+                title: '山海拾记',
+                filePath: file.path,
+                fingerprint: 'reader',
+                createdAt: DateTime(2026),
+              ),
+              repository: _MemoryRepository(db!, file.readAsStringSync()),
+              normalize: (text) async => const TextNormalizer().normalize(text),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.textContaining('这是第0段'), findsOneWidget);
+      expect(find.textContaining('这是第1段'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      if (const bool.fromEnvironment('CAPTURE_UI')) {
+        await tester.runAsync(() async {
+          final image =
+              await (boundary.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary)
+                  .toImage();
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await Directory('build/ui-review').create(recursive: true);
+          await File('build/ui-review/reader-390.png')
+              .writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      await tester.runAsync(() => tester.tapAt(const Offset(350, 400)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('这是第0段'), findsNothing);
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('主题与设置'));
+      await tester.pumpAndSettle();
+      expect(find.text('纸张'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() async {
+        await tester.pumpWidget(const SizedBox());
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+    },
+  );
+}

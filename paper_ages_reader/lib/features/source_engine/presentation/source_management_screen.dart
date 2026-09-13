@@ -45,8 +45,8 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
           )
           .length;
       final text = disabled > 0
-          ? '已导入 ${report.imported.length} 个书源；$disabled 个含脚本规则，已禁用。'
-          : '已导入 ${report.imported.length} 个静态书源。';
+          ? '已导入 ${report.imported.length} 个书源；$disabled 个依赖原生扩展，暂不支持。'
+          : '已导入 ${report.imported.length} 个书源，含 JS 的书源也可尝试使用。';
       final retained = report.retainedBoundUrls.isEmpty
           ? ''
           : ' ${report.retainedBoundUrls.length} 个正在使用的书源保留原配置。';
@@ -85,7 +85,7 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                   (source) => source.state == SourceImportState.ready,
                 );
                 return IconButton(
-                  tooltip: '搜索全部安全书源',
+                  tooltip: '搜索全部书源',
                   icon: const Icon(Icons.manage_search_outlined),
                   onPressed: hasSafe
                       ? () => Navigator.of(context).push(
@@ -119,7 +119,7 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
             if (sources.isEmpty) {
               return const Center(
                 child: Text(
-                  '导入一份 Legado JSON 书源。\n含脚本的规则会保留但禁用。',
+                  '导入一份 Legado JSON 书源。\n支持基础 JS 规则，兼容情况以搜索和阅读结果为准。',
                   textAlign: TextAlign.center,
                 ),
               );
@@ -137,7 +137,7 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                     color: unsafe ? Theme.of(context).colorScheme.error : null,
                   ),
                   title: Text(source.name),
-                  subtitle: Text(unsafe ? '已禁用：含不支持的脚本规则' : source.url),
+                  subtitle: Text(unsafe ? '依赖尚未实现的原生扩展' : source.url),
                   onTap: unsafe
                       ? null
                       : () => Navigator.of(context).push(
@@ -154,7 +154,7 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                             builder: (_) => AlertDialog(
                               title: const Text('书源已安全导入但不可启用'),
                               content: Text(
-                                '检测到脚本规则：\n${source.unsafePaths.join('\n')}\n\n本应用不会执行书源 JavaScript。',
+                                '检测到原生扩展依赖：\n${source.unsafePaths.join('\n')}\n\nJS 不再整体禁用，但原生库扩展尚未实现。',
                               ),
                               actions: [
                                 TextButton(

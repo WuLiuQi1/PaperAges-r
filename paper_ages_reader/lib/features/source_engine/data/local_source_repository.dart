@@ -69,7 +69,13 @@ class StoredBookSource {
       StoredBookSource(
         name: row['name']! as String,
         url: row['url']! as String,
-        state: row['state'] == SourceImportState.ready.name
+        state:
+            const LegadoSourceImporter()
+                    .importJson(row['configuration']! as String)
+                    .imported
+                    .first
+                    .state ==
+                SourceImportState.ready
             ? SourceImportState.ready
             : SourceImportState.disabledUnsafeRule,
         unsafePaths:

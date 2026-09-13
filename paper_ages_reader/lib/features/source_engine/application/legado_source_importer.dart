@@ -3,8 +3,8 @@ import 'dart:convert';
 import '../domain/rule_safety_policy.dart';
 
 /// Imports the portable JSON shape without ever interpreting source rules.
-/// Unsafe sources are retained as disabled records so users can see that the
-/// file imported, while no later network layer may accidentally execute them.
+/// JS rules remain eligible; unsupported native-library dependencies are retained
+/// with an explicit unavailable state. Import is not a runtime compatibility test.
 class LegadoSourceImporter {
   const LegadoSourceImporter({this.policy = const RuleSafetyPolicy()});
 
@@ -37,7 +37,7 @@ class LegadoSourceImporter {
           name: name,
           url: url,
           rawConfiguration: Map.unmodifiable(config),
-          state: report.isSafe
+          state: report.canExecute
               ? SourceImportState.ready
               : SourceImportState.disabledUnsafeRule,
           unsafePaths: List.unmodifiable(
