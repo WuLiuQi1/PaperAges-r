@@ -161,8 +161,8 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - The latest G3 code was assembled with
   `./gradlew.bat :app:assembleDebug --no-daemon --stacktrace` from `android/` on
   2026-09-13. It produced
-  `build/app/outputs/apk/debug/app-debug.apk` (221,660,789 bytes; SHA-256
-  `B575BDD82812C536D5B1AD6B0CE3EFA3B3FA30569C95F446C2A5636BB475A93E`).
+  `build/app/outputs/apk/debug/app-debug.apk` (221,661,326 bytes; SHA-256
+  `390C49CD18E43E6BA7737DF2521C60B1271F3C910E2084F0F9BDFEBBA3B091A6`).
   The APK contains `classes.dex`, Flutter assets, ARM64 Flutter/PDFium
   libraries. Gradle emitted SDK-XML and AGP/Kotlin deprecation warnings but
   exited `BUILD SUCCESSFUL`; no Android device was attached for installation.
