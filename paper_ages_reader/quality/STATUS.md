@@ -21,12 +21,15 @@ Last updated: 2026-09-14
   suite passes 191 tests with native QuickJS enabled; Android Debug APK build
   succeeds and produced a 196,507,162-byte artifact with SHA-256
   `5F3E66045B2B1FA676DE0E1AF163D817B3FED34699F86FEA4C655AB064DFD76C`.
+- GitHub Actions run #13 then completed the macOS unsigned iOS build in 6m31s
+  and published `PaperAges-unsigned-ipa` (12.2 MB, artifact digest
+  `12b7eae28e8c062a61415b89efb54387fa895194f986dee46a91b0140c0b66f6`).
 - Not verified: the user-supplied live source, an attached Android device,
-  Android WebView interaction behavior, iOS build/install, or physical iPhone
+  Android WebView interaction behavior, physical iPhone install, or iPhone
   source behavior. The reviewed upstream interactive/background WebView path
   is Android-only, so iOS sources depending on that native path remain an open
-  platform limitation. Passing fixtures are not a claim that every third-party
-  Legado source works.
+  platform limitation. Passing fixtures and a build-only iOS job are not a
+  claim that every third-party Legado source works.
 
 ## Reader and home interaction follow-up (1.0.0+7)
 
@@ -64,7 +67,7 @@ Last updated: 2026-09-14
 | G3 online and offline | Implementation complete; acceptance gates open | Open Reading-derived source runtime, search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching are assembled. A compatible live source plus Android/iOS device validation are still required before acceptance. |
 | G4 | In progress — foundations implemented; platform/service gates open | Foreground system TTS, offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Background media controls, WebDAV settings and all device/two-device acceptance remain. |
 | G5 | In progress — device defects reopened | User iPhone screenshots show import-picker failure and substantial visual gaps. See 2026-09-13 correction below. Final visual acceptance is not passed. |
-| G6 | In progress | GitHub iOS packaging workflow exists; build success and device acceptance must be tracked separately. |
+| G6 | Build/package complete; device gate open | GitHub run #13 built and packaged the unsigned iOS app successfully. Third-party signing and physical iPhone acceptance remain separate device evidence. |
 
 ## 2026-09-13 iPhone import and shell correction (build 1.0.0+2)
 
