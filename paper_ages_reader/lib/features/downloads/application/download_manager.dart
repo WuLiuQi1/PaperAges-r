@@ -56,6 +56,11 @@ class DownloadManager {
         final content = await engine.content(
           source: source,
           chapterUrl: locator,
+          bookUrl: Uri.tryParse(
+            task.bookId.contains('|')
+                ? task.bookId.substring(task.bookId.indexOf('|') + 1)
+                : task.bookId,
+          ),
           cancellationToken: token,
         );
         await _cache.write(

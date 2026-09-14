@@ -103,7 +103,7 @@ void main() {
     engine.close();
   });
 
-  test('rejects missing mandatory rules before any HTTP request', () async {
+  test('reports missing result rules without inventing a book', () async {
     var calls = 0;
     final engine = StaticSourceEngine(
       client: MockClient((_) async {
@@ -111,36 +111,40 @@ void main() {
         return http.Response('', 200);
       }),
     );
-    final unsafe = Map<String, Object?>.from(staticSource)
-      ..['ruleSearch'] = {'bookList': '@js: anything'};
+    final incomplete = Map<String, Object?>.from(staticSource)
+      ..['ruleSearch'] = {'bookList': '.book'};
     await expectLater(
-      engine.search(source: unsafe, query: 'x'),
-      throwsA(isA<UnsupportedRuleFailure>()),
+      engine.search(source: incomplete, query: 'x'),
+      throwsA(isA<ParseFailure>()),
     );
-    expect(calls, 0);
+    expect(calls, 1);
   });
 
   test(
-    'rejects unsupported rule composition before issuing HTTP request',
+    'supports concatenated reading-source selectors',
     () async {
       var calls = 0;
       final engine = StaticSourceEngine(
         client: MockClient((_) async {
           calls++;
-          return http.Response('', 200);
+          return http.Response.bytes(
+            utf8.encode(
+              '<div class="book"><a href="/a">甲</a></div><div class="legacy"><a href="/b">乙</a></div>',
+            ),
+            200,
+            headers: const {'content-type': 'text/html; charset=utf-8'},
+          );
         }),
       );
-      final unsupported = Map<String, Object?>.from(staticSource)
+      final composed = Map<String, Object?>.from(staticSource)
         ..['ruleSearch'] = {
           'bookList': '.book&&.legacy',
           'name': 'a@text',
           'bookUrl': 'a@href',
         };
-      await expectLater(
-        engine.search(source: unsupported, query: 'x'),
-        throwsA(isA<UnsupportedRuleFailure>()),
-      );
-      expect(calls, 0);
+      final books = await engine.search(source: composed, query: 'x');
+      expect(books.map((book) => book.title), ['甲', '乙']);
+      expect(calls, 1);
     },
   );
 

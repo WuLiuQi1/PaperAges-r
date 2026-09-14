@@ -314,6 +314,7 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
     final content = await _engine.content(
       source: widget.source.configuration,
       chapterUrl: widget.chapter.locator,
+      bookUrl: widget.chapter.bookLocator,
     );
     await cache.write(key, content);
     return content;

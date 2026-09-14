@@ -2,6 +2,32 @@
 
 Last updated: 2026-09-14
 
+## Open Reading runtime migration (1.0.0+9)
+
+- The earlier reduced `StaticSourceEngine` implementation has been replaced by
+  the source runtime reviewed at Open Reading commit
+  `b92c850a7e5758e7734bd757c1dc23139ca33276`, behind a Paper Ages adapter so
+  existing shelf, cache, download and UI data contracts remain stable.
+- The migrated path includes request templates/options, response decoding,
+  cookies, HTML/CSS rules, JSONPath, XPath, regex and interpolation pipelines,
+  QuickJS host helpers and replayed network calls, source variables, login
+  fields/session storage, catalogue/content pagination and verification
+  interaction coordination. The blanket JS ban is not used.
+- Android registers both the upstream-style background WebView bridge and
+  interactive verification browser. The latter enables JavaScript, DOM
+  storage, cookies and completion capture. Login/Cookie and source-search
+  actions are exposed from source management.
+- Windows verification: static analysis reports no diagnostics; the entire
+  suite passes 191 tests with native QuickJS enabled; Android Debug APK build
+  succeeds and produced a 196,507,162-byte artifact with SHA-256
+  `5F3E66045B2B1FA676DE0E1AF163D817B3FED34699F86FEA4C655AB064DFD76C`.
+- Not verified: the user-supplied live source, an attached Android device,
+  Android WebView interaction behavior, iOS build/install, or physical iPhone
+  source behavior. The reviewed upstream interactive/background WebView path
+  is Android-only, so iOS sources depending on that native path remain an open
+  platform limitation. Passing fixtures are not a claim that every third-party
+  Legado source works.
+
 ## Reader and home interaction follow-up (1.0.0+7)
 
 - Home follows the supplied reference with one horizontally scrolling
@@ -35,7 +61,7 @@ Last updated: 2026-09-14
 | G0 engineering audit | Complete | New Flutter Android/iOS project; lockfile, analysis, tests and a structurally validated Android Debug APK. iOS requires macOS. |
 | G1 risk spikes | Complete with blocked platform gates | Text, page-curl/menu, source preflight, sync merge/whitelist, audio and PDF contracts have automated evidence. Native rendering, media, WebDAV transport and device validation remain explicitly blocked. |
 | G2 reading and state | In progress | Persistent TXT/PDF import, encoding fallback, local state, text restore, appearance controls and a native PDF viewer are implemented. Real-book four-mode pagination/curl and device acceptance remain. |
-| G3 online and offline | In progress — implementation assembled; acceptance gates open | Safe static sources support search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching. A compatible live source plus Android device validation are still required before this stage can be accepted. |
+| G3 online and offline | Implementation complete; acceptance gates open | Open Reading-derived source runtime, search/detail/catalogue/reading, network-shelf persistence, bounded pagination, durable cache-backed downloads and verified source switching are assembled. A compatible live source plus Android/iOS device validation are still required before acceptance. |
 | G4 | In progress — foundations implemented; platform/service gates open | Foreground system TTS, offline TTS queue primitives, local reading-union accounting, versioned sync events and a durable whitelist-enforced outbox are covered by automated tests. Background media controls, WebDAV settings and all device/two-device acceptance remain. |
 | G5 | In progress — device defects reopened | User iPhone screenshots show import-picker failure and substantial visual gaps. See 2026-09-13 correction below. Final visual acceptance is not passed. |
 | G6 | In progress | GitHub iOS packaging workflow exists; build success and device acceptance must be tracked separately. |

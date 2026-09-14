@@ -1,22 +1,76 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'features/home/presentation/home_shell.dart';
 import 'core/storage/app_database.dart';
+import 'features/source_engine/open_reading/book_sources/source_engine/source_interaction_coordinator.dart';
+import 'features/source_engine/presentation/source_verification_screen.dart';
 
 void main() => runApp(const PaperAgesApp());
 
 /// Application root; reading surfaces keep their own document themes.
-class PaperAgesApp extends StatelessWidget {
+class PaperAgesApp extends StatefulWidget {
   const PaperAgesApp({super.key, this.database});
   final AppDatabase? database;
 
   @override
+  State<PaperAgesApp> createState() => _PaperAgesAppState();
+}
+
+class _PaperAgesAppState extends State<PaperAgesApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _pending = <SourceInteractionTicket>[];
+  StreamSubscription<SourceInteractionTicket>? _subscription;
+  bool _showing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = SourceInteractionCoordinator.instance.requests.listen((
+      ticket,
+    ) {
+      _pending.add(ticket);
+      _showNext();
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    SourceInteractionCoordinator.instance.cancelAll();
+    super.dispose();
+  }
+
+  Future<void> _showNext() async {
+    if (_showing || _pending.isEmpty) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNext());
+      return;
+    }
+    _showing = true;
+    final ticket = _pending.removeAt(0);
+    try {
+      await navigator.push<void>(
+        MaterialPageRoute(
+          builder: (_) => SourceVerificationScreen(ticket: ticket),
+        ),
+      );
+    } finally {
+      _showing = false;
+      _showNext();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
+    navigatorKey: _navigatorKey,
     title: 'Paper Ages',
     debugShowCheckedModeBanner: false,
     theme: _theme(Brightness.light),
     darkTheme: _theme(Brightness.dark),
-    home: HomeShell(database: database),
+    home: HomeShell(database: widget.database),
   );
 
   ThemeData _theme(Brightness brightness) {

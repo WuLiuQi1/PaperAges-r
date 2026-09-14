@@ -7,6 +7,7 @@ import '../../../core/storage/app_database.dart';
 import '../application/legado_source_importer.dart';
 import '../data/local_source_repository.dart';
 import 'all_sources_search_screen.dart';
+import 'source_login_screen.dart';
 import 'source_search_screen.dart';
 
 enum _SourceFilter { all, enabled, disabled, runnable }
@@ -460,6 +461,15 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                                                       ),
                                                 ),
                                               );
+                                            } else if (value == 'login') {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      SourceLoginScreen(
+                                                        source: source,
+                                                      ),
+                                                ),
+                                              );
                                             } else if (value == 'delete') {
                                               _remove(repository, source);
                                             }
@@ -468,6 +478,10 @@ class _SourceManagementScreenState extends State<SourceManagementScreen> {
                                             PopupMenuItem(
                                               value: 'search',
                                               child: Text('搜索此书源'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'login',
+                                              child: Text('登录 / Cookie'),
                                             ),
                                             PopupMenuItem(
                                               value: 'delete',

@@ -1,15 +1,6 @@
-// ignore_for_file: curly_braces_in_flow_control_structures
-
-import 'dart:async';
-import 'dart:convert';
-
-import 'package:charset_converter/charset_converter.dart';
-import 'package:crypto/crypto.dart';
-import 'package:html/parser.dart' show parse;
 import 'package:http/http.dart' as http;
 
-import 'rule_safety_policy.dart';
-import 'source_javascript.dart';
+import 'open_reading_adapter.dart';
 
 sealed class SourceEngineFailure implements Exception {
   const SourceEngineFailure(this.message);
@@ -34,7 +25,27 @@ class CancelledFailure extends SourceEngineFailure {
 
 class SourceCancellationToken {
   bool _cancelled = false;
-  void cancel() => _cancelled = true;
+  final Set<void Function()> _listeners = {};
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    for (final listener in List<void Function()>.from(_listeners)) {
+      listener();
+    }
+    _listeners.clear();
+  }
+
+  void addListener(void Function() listener) {
+    if (_cancelled) {
+      listener();
+    } else {
+      _listeners.add(listener);
+    }
+  }
+
   void throwIfCancelled() {
     if (_cancelled) throw const CancelledFailure();
   }
@@ -76,11 +87,13 @@ class SourceChapter {
     required this.title,
     required this.locator,
     required this.ordinal,
+    this.bookLocator,
   });
   final String key;
   final String title;
   final Uri locator;
   final int ordinal;
+  final Uri? bookLocator;
 }
 
 class NetworkBookDetails {
@@ -93,450 +106,54 @@ class StaticSourceEngine {
   StaticSourceEngine({
     http.Client? client,
     this.limits = const SourceEngineLimits(),
-    this.evaluateScript = evaluateSourceScript,
-  }) : _client = client ?? http.Client();
-  final http.Client _client;
+  }) : _adapter = OpenReadingSourceAdapter(client: client, limits: limits);
+
   final SourceEngineLimits limits;
-  final SourceScriptEvaluator evaluateScript;
+  final OpenReadingSourceAdapter _adapter;
 
   Future<List<NetworkBook>> search({
     required Map<String, Object?> source,
     required String query,
     int page = 1,
     SourceCancellationToken? cancellationToken,
-  }) async {
-    _ensureSafe(source);
-    if (query.trim().isEmpty) throw const ParseFailure('Search query is empty');
-    if (page < 1 || page > limits.maxPages) {
-      throw const ParseFailure('Search page is outside the allowed range');
-    }
-    final template = source['searchUrl'];
-    final rules = source['ruleSearch'];
-    if (template is! String || rules is! Map)
-      throw const UnsupportedRuleFailure(
-        'Static searchUrl and ruleSearch are required',
-      );
-    final script = _scriptParts(template);
-    final searchTemplate = script == null
-        ? template
-        : _runScript(script.$2, script.$1, {
-            'key': query,
-            'page': page,
-            'baseUrl': _sourceUri(source).toString(),
-          }, (_) => null).toString();
-    _validateSearchTemplate(searchTemplate);
-    final listSelector = _rule(rules, 'bookList');
-    final nameRule = _rule(rules, 'name');
-    final bookUrlRule = _rule(rules, 'bookUrl');
-    final authorRule = _rule(rules, 'author');
-    final coverRule = _rule(rules, 'coverUrl');
-    final introRule = _rule(rules, 'intro');
-    final lastChapterRule = _rule(rules, 'lastChapter');
-    if (listSelector == null || nameRule == null || bookUrlRule == null) {
-      throw const UnsupportedRuleFailure(
-        'ruleSearch.bookList, name and bookUrl are required',
-      );
-    }
-    final document = await _getHtml(
-      _resolve(
-        _sourceUri(source),
-        searchTemplate
-            .replaceAll('{{key}}', Uri.encodeQueryComponent(query))
-            .replaceAll('{{page}}', '$page'),
-      ),
-      cancellationToken,
-    );
-    final items = _select(document, listSelector);
-    return List<NetworkBook>.from(
-      items
-          .map(
-            (item) => NetworkBook(
-              sourceUrl: _sourceUri(source).toString(),
-              title: _value(item, nameRule) ?? '',
-              locator: _resolve(
-                _sourceUri(source),
-                _value(item, bookUrlRule) ?? '',
-              ),
-              author: _value(item, authorRule),
-              coverUrl: _urlOrNull(_sourceUri(source), _value(item, coverRule)),
-              intro: _value(item, introRule),
-              lastChapter: _value(item, lastChapterRule),
-            ),
-          )
-          .where((book) => book.title.isNotEmpty && book.locator.hasScheme)
-          .toList(growable: false),
-    );
-  }
+  }) => _adapter.search(
+    source: source,
+    query: query,
+    page: page,
+    cancellationToken: cancellationToken,
+  );
 
   Future<List<SourceChapter>> chapters({
     required Map<String, Object?> source,
     required Uri tocUrl,
     SourceCancellationToken? cancellationToken,
-  }) async {
-    _ensureSafe(source);
-    final rules = source['ruleToc'];
-    if (rules is! Map)
-      throw const UnsupportedRuleFailure('ruleToc is required');
-    final selector = _rule(rules, 'chapterList');
-    final chapterNameRule = _rule(rules, 'chapterName');
-    final chapterUrlRule = _rule(rules, 'chapterUrl');
-    final nextTocRule = _rule(rules, 'nextTocUrl');
-    if (selector == null || chapterNameRule == null || chapterUrlRule == null) {
-      throw const UnsupportedRuleFailure(
-        'ruleToc.chapterList, chapterName and chapterUrl are required',
-      );
-    }
-    final chapters = <SourceChapter>[];
-    final seenPages = <String>{};
-    final seenChapterUrls = <String>{};
-    var page = tocUrl;
-    for (var pageIndex = 0; pageIndex < limits.maxPages; pageIndex++) {
-      cancellationToken?.throwIfCancelled();
-      if (!seenPages.add(page.toString())) break;
-      final document = await _getHtml(page, cancellationToken);
-      for (final entry in _select(document, selector).asMap().entries) {
-        final title = _value(entry.value, chapterNameRule) ?? '';
-        final url = _value(entry.value, chapterUrlRule) ?? '';
-        final locator = _resolve(page, url);
-        if (title.isEmpty ||
-            !locator.hasScheme ||
-            !seenChapterUrls.add(locator.toString())) {
-          continue;
-        }
-        chapters.add(
-          SourceChapter(
-            key: sha256.convert(utf8.encode(locator.toString())).toString(),
-            title: title,
-            locator: locator,
-            ordinal: chapters.length,
-          ),
-        );
-      }
-      final next = _value(document, nextTocRule);
-      if (next == null || next.isEmpty) break;
-      page = _resolve(page, next);
-    }
-    return List.unmodifiable(chapters);
-  }
+  }) => _adapter.chapters(
+    source: source,
+    bookUrl: tocUrl,
+    cancellationToken: cancellationToken,
+  );
 
   Future<NetworkBookDetails> details({
     required Map<String, Object?> source,
     required NetworkBook book,
     SourceCancellationToken? cancellationToken,
-  }) async {
-    _ensureSafe(source);
-    final rules = source['ruleBookInfo'];
-    if (rules is! Map)
-      throw const UnsupportedRuleFailure('ruleBookInfo is required');
-    final nameRule = _rule(rules, 'name');
-    final tocRule = _rule(rules, 'tocUrl');
-    final authorRule = _rule(rules, 'author');
-    final coverRule = _rule(rules, 'coverUrl');
-    final introRule = _rule(rules, 'intro');
-    final lastChapterRule = _rule(rules, 'lastChapter');
-    if (tocRule == null) {
-      throw const UnsupportedRuleFailure('ruleBookInfo.tocUrl is required');
-    }
-    final document = await _getHtml(book.locator, cancellationToken);
-    final toc = _value(document, tocRule);
-    if (toc == null || toc.isEmpty)
-      throw const ParseFailure('Book information has no catalogue URL');
-    return NetworkBookDetails(
-      book: NetworkBook(
-        sourceUrl: book.sourceUrl,
-        title: _value(document, nameRule) ?? book.title,
-        locator: book.locator,
-        author: _value(document, authorRule) ?? book.author,
-        coverUrl:
-            _urlOrNull(book.locator, _value(document, coverRule)) ??
-            book.coverUrl,
-        intro: _value(document, introRule) ?? book.intro,
-        lastChapter: _value(document, lastChapterRule) ?? book.lastChapter,
-      ),
-      tocUrl: _resolve(book.locator, toc),
-    );
-  }
+  }) => _adapter.details(
+    source: source,
+    book: book,
+    cancellationToken: cancellationToken,
+  );
 
   Future<String> content({
     required Map<String, Object?> source,
     required Uri chapterUrl,
+    Uri? bookUrl,
     SourceCancellationToken? cancellationToken,
-  }) async {
-    _ensureSafe(source);
-    final rules = source['ruleContent'];
-    if (rules is! Map)
-      throw const UnsupportedRuleFailure('ruleContent is required');
-    final contentRule = _rule(rules, 'content');
-    final nextContentRule = _rule(rules, 'nextContentUrl');
-    if (contentRule == null) {
-      throw const UnsupportedRuleFailure('ruleContent.content is required');
-    }
-    final pages = <String>[];
-    final seenPages = <String>{};
-    var page = chapterUrl;
-    for (var pageIndex = 0; pageIndex < limits.maxPages; pageIndex++) {
-      cancellationToken?.throwIfCancelled();
-      if (!seenPages.add(page.toString())) break;
-      final document = await _getHtml(page, cancellationToken);
-      final result = _value(document, contentRule);
-      if (result == null || result.trim().isEmpty) {
-        if (pages.isEmpty)
-          throw const ParseFailure('Content rule returned no text');
-        break;
-      }
-      pages.add(result.replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
-      final next = _value(document, nextContentRule);
-      if (next == null || next.isEmpty) break;
-      page = _resolve(page, next);
-    }
-    return pages.join('\n\n');
-  }
+  }) => _adapter.content(
+    source: source,
+    chapterUrl: chapterUrl,
+    bookUrl: bookUrl,
+    cancellationToken: cancellationToken,
+  );
 
-  void _ensureSafe(Map<String, Object?> source) {
-    final report = const RuleSafetyPolicy().inspect(source);
-    if (report.issues.any(
-      (issue) => issue.code == RuleSafetyCode.dynamicLibraryOrBridge,
-    ))
-      throw UnsupportedRuleFailure(
-        'Source contains forbidden dynamic rule: ${report.issues.first.path}',
-      );
-  }
-
-  Future<dynamic> _getHtml(Uri url, SourceCancellationToken? token) async {
-    token?.throwIfCancelled();
-    try {
-      final response = await _client.get(url).timeout(limits.timeout);
-      token?.throwIfCancelled();
-      if (response.statusCode < 200 || response.statusCode >= 300)
-        throw ParseFailure('HTTP ${response.statusCode}');
-      if (response.bodyBytes.length > limits.maxResponseBytes)
-        throw const ParseFailure('Response exceeds size limit');
-      return parse(await _decodeHtml(response));
-    } on TimeoutException {
-      throw const NetworkTimeoutFailure('Request timed out');
-    }
-  }
-
-  Future<String> _decodeHtml(http.Response response) async {
-    final header = response.headers['content-type'] ?? '';
-    final match = RegExp(
-      r'''charset\s*=\s*["']?([^;\s"']+)''',
-      caseSensitive: false,
-    ).firstMatch(header);
-    final charset = match?.group(1)?.trim();
-    if (charset == null ||
-        charset.isEmpty ||
-        charset.toLowerCase() == 'utf-8' ||
-        charset.toLowerCase() == 'utf8') {
-      try {
-        return utf8.decode(response.bodyBytes);
-      } on FormatException {
-        throw const ParseFailure('Response is not valid UTF-8');
-      }
-    }
-    try {
-      return await CharsetConverter.decode(charset, response.bodyBytes);
-    } catch (_) {
-      throw ParseFailure('Unsupported or invalid response charset: $charset');
-    }
-  }
-
-  String? _rule(Map rules, String key) {
-    final raw = rules[key];
-    if (raw == null) return null;
-    if (raw is! String || raw.trim().isEmpty) {
-      throw UnsupportedRuleFailure('$key must be a non-empty static rule');
-    }
-    _validateRule(key, raw);
-    return raw;
-  }
-
-  void _validateSearchTemplate(String template) {
-    if (template.contains('||') ||
-        template.contains('&&') ||
-        template.contains('@js') ||
-        template.contains('<js>')) {
-      throw const UnsupportedRuleFailure('Unsupported search URL expression');
-    }
-  }
-
-  void _validateRule(String key, String raw) {
-    final script = _scriptParts(raw);
-    if (script != null) {
-      if (script.$1.isNotEmpty) _validateRule(key, script.$1);
-      return;
-    }
-    if (raw.contains('||')) {
-      for (final part in raw.split('||')) {
-        _validateRule(key, part);
-      }
-      return;
-    }
-    if (raw.contains('##')) {
-      final parts = raw.split('##');
-      if (parts.length < 3)
-        throw UnsupportedRuleFailure('$key has incomplete regex');
-      if (parts.first.isNotEmpty) _validateRule(key, parts.first);
-      try {
-        RegExp(parts[1]);
-      } catch (_) {
-        throw UnsupportedRuleFailure('$key has invalid regex');
-      }
-      return;
-    }
-    if (raw.contains('&&')) {
-      throw UnsupportedRuleFailure('$key uses an unsupported rule composition');
-    }
-    final at = raw.indexOf('@');
-    if (at < 0) return;
-    final selector = raw.substring(0, at).trim();
-    final suffix = raw.substring(at + 1).trim();
-    if (selector.isEmpty ||
-        !(suffix == 'text' ||
-            suffix == 'textNodes' ||
-            RegExp(r'^[A-Za-z_:][-A-Za-z0-9_:.]*$').hasMatch(suffix) ||
-            RegExp(r'^\[[A-Za-z_:][-A-Za-z0-9_:.]*\]$').hasMatch(suffix))) {
-      throw UnsupportedRuleFailure(
-        '$key is outside the supported CSS rule subset',
-      );
-    }
-  }
-
-  dynamic _select(dynamic document, String rule) {
-    final script = _scriptParts(rule);
-    if (script != null) {
-      final result = _runScript(
-        script.$2,
-        document.outerHtml,
-        {},
-        (rule) => _value(document, rule),
-      );
-      if (result is! List)
-        throw const ParseFailure('JS list rule must return an array');
-      return result.map((item) => parse(item.toString()).body!).toList();
-    }
-    if (rule.contains('||')) {
-      for (final part in rule.split('||')) {
-        final selected = _select(document, part) as List;
-        if (selected.isNotEmpty) return selected;
-      }
-      return [];
-    }
-    try {
-      final selector = _selector(rule);
-      final has = RegExp(r'^(.+):has\((.+)\)$').firstMatch(selector);
-      if (has != null) {
-        return (document.querySelectorAll(has.group(1)!) as List)
-            .where((dynamic node) => node.querySelector(has.group(2)!) != null)
-            .toList();
-      }
-      return document.querySelectorAll(selector);
-    } catch (_) {
-      throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
-    }
-  }
-
-  String _selector(String rule) => rule.split('@').first.trim();
-  String? _value(dynamic element, String? rule) {
-    if (rule == null) return null;
-    final script = _scriptParts(rule);
-    if (script != null) {
-      final initial = script.$1.isEmpty
-          ? element.outerHtml
-          : _value(element, script.$1);
-      return _runScript(
-        script.$2,
-        initial,
-        {},
-        (rule) => _value(element, rule),
-      )?.toString();
-    }
-    if (rule.contains('||')) {
-      for (final part in rule.split('||')) {
-        final value = _value(element, part);
-        if (value != null && value.isNotEmpty) return value;
-      }
-      return null;
-    }
-    if (rule.contains('##')) {
-      final parts = rule.split('##');
-      final input = parts.first.isEmpty
-          ? element.outerHtml.toString()
-          : (_value(element, parts.first) ?? '');
-      final pattern = RegExp(parts[1]);
-      String replacement(Match match) =>
-          parts[2].replaceAllMapped(RegExp(r'\$(\d+)'), (group) {
-            final index = int.parse(group[1]!);
-            return index <= match.groupCount ? match.group(index) ?? '' : '';
-          });
-      if (parts.length > 3 && parts[3] == '#') {
-        final match = pattern.firstMatch(input);
-        return match == null ? '' : replacement(match);
-      }
-      return input.replaceAllMapped(pattern, replacement);
-    }
-    if (rule == 'href' || rule == 'src' || rule == 'content')
-      return element.attributes[rule]?.toString().trim();
-    dynamic selected;
-    try {
-      if (rule.contains('@')) {
-        var selector = _selector(rule);
-        final indexed = RegExp(r'^(.*)\.(\d+)$').firstMatch(selector);
-        if (indexed != null) {
-          selector = indexed[1]!;
-          final nodes = element.querySelectorAll(selector) as List;
-          final index = int.parse(indexed[2]!);
-          selected = index < nodes.length ? nodes[index] : null;
-        } else {
-          selected = element.querySelector(selector);
-        }
-      } else {
-        selected = element;
-      }
-      if (selected == null) return null;
-    } catch (_) {
-      throw UnsupportedRuleFailure('Invalid CSS selector: ${_selector(rule)}');
-    }
-    final suffix = rule.contains('@')
-        ? rule.substring(rule.indexOf('@') + 1)
-        : 'text';
-    if (suffix == 'text' || suffix == 'textNodes') return selected.text.trim();
-    if (suffix.startsWith('[') && suffix.endsWith(']'))
-      return selected.attributes[suffix.substring(1, suffix.length - 1)]
-          ?.trim();
-    if (suffix.startsWith('@'))
-      return selected.attributes[suffix.substring(1)]?.trim();
-    return selected.attributes[suffix]?.trim();
-  }
-
-  Uri _sourceUri(Map<String, Object?> source) =>
-      Uri.parse(source['bookSourceUrl']! as String);
-  Uri _resolve(Uri base, String raw) => base.resolve(raw.trim());
-  String? _urlOrNull(Uri base, String? raw) =>
-      raw == null || raw.isEmpty ? null : _resolve(base, raw).toString();
-  void close() => _client.close();
-
-  (String, String)? _scriptParts(String rule) {
-    final marker = RegExp(r'@js:|<js>', caseSensitive: false).firstMatch(rule);
-    if (marker == null) return null;
-    return (
-      rule.substring(0, marker.start).trim(),
-      rule
-          .substring(marker.end)
-          .replaceFirst(RegExp(r'</js>\s*$', caseSensitive: false), ''),
-    );
-  }
-
-  Object? _runScript(
-    String code,
-    Object? result,
-    Map<String, Object?> variables,
-    String? Function(String) getString,
-  ) {
-    try {
-      return evaluateScript(code, result, variables, getString);
-    } catch (error) {
-      throw ParseFailure('JavaScript 规则执行失败：$error');
-    }
-  }
+  void close() => _adapter.close();
 }

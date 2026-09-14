@@ -6,7 +6,7 @@ Flutter reader for Android and iOS. The release name, bundle identifier, signing
 
 ## Current delivery state
 
-The project has local TXT/PDF reading, Legado source workflows including a bounded JavaScript rule runtime, cache-backed downloads, system TTS/share integration, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
+The project has local TXT/PDF reading, an Open Reading-derived Legado rule runtime, cache-backed downloads, system TTS/share integration, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
 
 This is **not an accepted release**: real Android device tests, iOS/macOS validation, background/lock-screen TTS, live-source compatibility, and two-device WebDAV recovery remain required.
 
@@ -16,8 +16,10 @@ Paper Ages Reader is licensed under AGPL-3.0-only. Its book-source management
 and aggregated-search design is adapted from the AGPL-licensed
 [Open Reading](https://github.com/miloquinn/open-reading) project, using commit
 `b92c850a7e5758e7734bd757c1dc23139ca33276` as the reviewed reference. See
-[LICENSE](LICENSE) and [NOTICE](NOTICE). No claim is made that Paper Ages Reader
-has complete Open Reading/Legado runtime compatibility yet.
+[LICENSE](LICENSE) and [NOTICE](NOTICE). The source subsystem keeps Paper Ages'
+storage and screens while using the reviewed Open Reading runtime
+implementation. Live-source/device compatibility still depends on the
+individual source and platform capabilities.
 
 ## Windows development
 
@@ -66,7 +68,7 @@ Only a credential-free HTTPS directory URL is stored in app settings. Username/p
 
 - Android: attach a physical device for reader gestures, PDF, offline voice, lock screen, profile-frame and long-run tests.
 - iOS: macOS/Xcode is required; unsigned CI output is build evidence only.
-- Sources: static and bounded JavaScript rules are implemented; validate the supplied source and failure boundaries end to end on a device.
+- Sources: HTML/CSS, JSONPath, XPath, request expressions, cookies, login, QuickJS and Android WebView/verification paths are implemented; validate the supplied source and failure boundaries end to end on a device. Interactive WebView verification is Android-only in the reviewed upstream implementation.
 - WebDAV: validate 401/403, timeout, quota, partial upload and concurrent devices against a user-controlled endpoint.
 
 ## Licensing
