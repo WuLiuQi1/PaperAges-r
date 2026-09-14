@@ -3,8 +3,9 @@ Copyright (C) 2026 Paper Ages Reader contributors
 
 License: AGPL-3.0-only
 
-The book-source management and aggregated-search design is adapted from ideas
-and behavior in Open Reading (开元阅读):
+The book-source management, aggregated-search design, page-turn geometry,
+spring interaction, snapshot renderer and classic page-fold shader are adapted
+from Open Reading (开元阅读):
 https://github.com/miloquinn/open-reading
 
 Reference snapshot reviewed during this work:

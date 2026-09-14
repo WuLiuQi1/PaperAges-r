@@ -59,6 +59,8 @@ class PersistentSourceBindingStore {
     'locator': binding.locator.toString(),
     'chapterKey': binding.chapterKey,
     'revision': binding.revision,
+    if (binding.bookLocator != null)
+      'bookLocator': binding.bookLocator.toString(),
   };
 
   static SourceBinding _fromRow(Map<String, Object?> row) => SourceBinding(
@@ -67,5 +69,8 @@ class PersistentSourceBindingStore {
     locator: Uri.parse(row['locator']! as String),
     chapterKey: row['chapterKey']! as String,
     revision: row['revision']! as int,
+    bookLocator: row['bookLocator'] == null
+        ? null
+        : Uri.tryParse(row['bookLocator']! as String),
   );
 }

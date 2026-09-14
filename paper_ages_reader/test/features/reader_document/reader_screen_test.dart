@@ -49,6 +49,7 @@ void main() {
     );
     final repository = _MemoryRepository(db!, '不应读取本地文件');
     var switches = 0;
+    final preloaded = <int>[];
     await tester.pumpWidget(
       MaterialApp(
         home: ReaderDocumentScreen(
@@ -67,6 +68,10 @@ void main() {
             ReaderChapterItem(title: '第二章', key: '2'),
           ],
           loadChapter: (index) async => index == 1 ? '第二章在线正文。' : '第一章在线正文。',
+          preloadChapter: (index) async {
+            preloaded.add(index);
+            return index == 1 ? '第二章在线正文。' : '第一章在线正文。';
+          },
           normalize: (text) async => const TextNormalizer().normalize(text),
           onChangeSource: (_) async {
             switches += 1;
@@ -77,6 +82,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('这是在线章节正文'), findsOneWidget);
+    expect(preloaded, [1]);
     expect(find.byType(AppBar), findsNothing);
     await tester.tap(find.byTooltip('阅读菜单'));
     await tester.pumpAndSettle();

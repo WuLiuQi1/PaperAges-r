@@ -450,3 +450,33 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - Full Legado Java bridge/jsLib/login/WebView/request options are NOT implemented. Supplied source rule shapes pass offline fixtures; live site and iPhone source flow not verified. iOS JavaScriptCore interruption and native execution remain open. Bundled QuickJS lacks a memory-limit symbol; no memory-bound claim is made.
 - Fixed the plugin-specific Android Java/Kotlin target mismatch after AGP configuration; APK rebuild succeeded before final version increment. `flutter_js` emits a future Kotlin-plugin migration warning. Final rerun results are recorded in the handoff.
 - Reader reuses its repository database for statistics; database close now waits for queued writes. Reader widget regression includes page turning and theme opening; its cleanup exposed and helped fix pending-write handling.
+## Persistent online reading window and Open Reading page turns — 1.0.0+13 (2026-09-14)
+
+- Replaced the production reader's single-text translation and painted overlay
+  with Open Reading's three-leaf `PageView` slide and its production classic
+  page-fold stack: binding-local fold geometry, pointer-direction recognition,
+  velocity projection, spring commit/cancel, bounded raster snapshots and the
+  `reader_classic_page_fold.frag` GPU shader. Forward, backward and cancelled
+  turns operate on real current/adjacent page leaves.
+- Online books now have an explicit durable window. Adding a book first caches
+  chapter 1. Opening or changing chapter reads the current body from the
+  source-bound disk cache and preloads the successor without changing the
+  persisted reading binding. At chapter 24 this writes chapters 24 and 25;
+  rebuilding `ChapterCache` reads both without a network request.
+- Chapter catalogues are persisted alongside bodies under a key containing the
+  stable shelf identity, active source and active book locator. A shelf reopen
+  can construct its directory and current/successor requests locally instead
+  of blocking the cached current chapter on a catalogue refetch.
+- Source switching now searches the selected source for the same title, maps
+  the current chapter by title with ordinal fallback, verifies and persists the
+  target plus successor, persists the new source-scoped catalogue, and only
+  then compare-and-set commits the binding. The new book locator is part of the
+  durable binding, preventing subsequent chapter requests from using the old
+  source's book URL.
+- Windows verification: `flutter analyze --no-pub` completed without
+  diagnostics; all 202 tests passed with native QuickJS tests enabled; Android
+  debug APK 1.0.0+13 built successfully (196,652,851 bytes, SHA-256
+  `B738C7B096118676371B558F75223689497A66AB92D3A73E3683736048CD0816`).
+  APK inspection confirms `assets/flutter_assets/shaders/reader_classic_page_fold.frag`.
+- Not verified: gesture feel/frame timing on physical iPhone and Android,
+  process-kill recovery with the user's live source, and iOS shader compilation.

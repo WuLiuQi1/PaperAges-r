@@ -24,7 +24,24 @@ void main() {
         contentRevision: 'r1',
       );
       await cache.write(key, '正文');
+      await cache.writeCatalog('book|source-a', [
+        CachedChapterRecord(
+          key: '1',
+          title: '第一章',
+          locator: Uri.parse('https://example.test/chapter/1'),
+          ordinal: 0,
+          bookLocator: Uri.parse('https://example.test/book'),
+        ),
+      ]);
       expect(await cache.read(key), '正文');
+      final reopened = ChapterCache(
+        Directory('${root.path}${Platform.pathSeparator}network'),
+      );
+      expect(
+        (await reopened.readCatalog('book|source-a'))!.single.title,
+        '第一章',
+      );
+      expect(await reopened.readCatalog('book|source-b'), isNull);
       expect(
         await cache.read(
           ChapterCacheKey(
@@ -39,6 +56,7 @@ void main() {
       );
       await cache.clearNetworkCache();
       expect(await cache.read(key), isNull);
+      expect(await cache.readCatalog('book|source-a'), isNull);
       expect(await imported.readAsString(), 'keep');
     },
   );

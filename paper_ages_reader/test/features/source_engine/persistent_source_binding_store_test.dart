@@ -22,6 +22,7 @@ void main() {
         locator: Uri.parse('https://one.example/chapter/1'),
         chapterKey: 'one-1',
         revision: 1,
+        bookLocator: Uri.parse('https://one.example/book'),
       );
       final second = SourceBinding(
         bookId: 'book',
@@ -29,6 +30,7 @@ void main() {
         locator: Uri.parse('https://two.example/chapter/1'),
         chapterKey: 'two-1',
         revision: 1,
+        bookLocator: Uri.parse('https://two.example/book'),
       );
 
       final results = await Future.wait([
@@ -46,6 +48,10 @@ void main() {
 
       final reopened = await AppDatabase.openFile(file);
       expect(reopened.sourceBinding('book')?['revision'], 1);
+      expect(
+        reopened.sourceBinding('book')?['bookLocator'],
+        committed.bookLocator.toString(),
+      );
       expect(reopened.position('book')?['sourceUrl'], committed.sourceUrl);
       expect(reopened.position('book')?['bindingRevision'], 1);
       await reopened.close();

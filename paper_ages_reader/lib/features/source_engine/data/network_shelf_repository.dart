@@ -43,6 +43,7 @@ class NetworkShelfRepository {
         'locator': initialChapter.locator.toString(),
         'chapterKey': initialChapter.key,
         'revision': 1,
+        'bookLocator': book.locator.toString(),
       };
       final positions = Map<String, Object?>.from(next['positions']! as Map);
       positions[bookId] = {

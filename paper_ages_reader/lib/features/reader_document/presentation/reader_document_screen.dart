@@ -16,6 +16,7 @@ import '../../library/domain/library_book.dart';
 import '../../statistics/application/reading_session_recorder.dart';
 import '../../statistics/data/reading_statistics_repository.dart';
 import '../../reader_layout/domain/page_turn_policy.dart';
+import '../../reader_layout/presentation/open_reading_page_curl.dart';
 import '../domain/normalized_text_document.dart';
 import 'viewport_paginator.dart';
 
@@ -30,6 +31,109 @@ class ReaderChapterItem {
   const ReaderChapterItem({required this.title, required this.key});
   final String title;
   final String key;
+}
+
+/// Three-leaf horizontal pager adapted from Open Reading's production
+/// PageView approach. The neighbour remains mounted during the drag, then the
+/// host commits the anchor and the controller silently recentres on the new
+/// current leaf.
+class _ReaderSlidePager extends StatefulWidget {
+  const _ReaderSlidePager({
+    super.key,
+    required this.current,
+    required this.onNext,
+    required this.onPrevious,
+    required this.onCenterTap,
+    this.next,
+    this.previous,
+  });
+
+  final ReaderPageSnapshot current;
+  final ReaderPageSnapshot? next;
+  final ReaderPageSnapshot? previous;
+  final Future<void> Function() onNext;
+  final Future<void> Function() onPrevious;
+  final VoidCallback onCenterTap;
+
+  @override
+  State<_ReaderSlidePager> createState() => _ReaderSlidePagerState();
+}
+
+class _ReaderSlidePagerState extends State<_ReaderSlidePager> {
+  late final PageController _controller = PageController(initialPage: 1);
+  bool _committing = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _select(int index) async {
+    if (_committing || index == 1) return;
+    final valid = index == 0 ? widget.previous != null : widget.next != null;
+    if (!valid) {
+      await _controller.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    _committing = true;
+    try {
+      if (index == 0) {
+        await widget.onPrevious();
+      } else {
+        await widget.onNext();
+      }
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted && _controller.hasClients) _controller.jumpToPage(1);
+    } finally {
+      _committing = false;
+    }
+  }
+
+  Future<void> _tap(Offset position, double width) async {
+    final x = position.dx / width;
+    if (x < .25 && widget.previous != null) {
+      await _controller.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    } else if (x > .75 && widget.next != null) {
+      await _controller.animateToPage(
+        2,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    } else if (x >= .25 && x <= .75) {
+      widget.onCenterTap();
+    }
+  }
+
+  Widget _leaf(ReaderPageSnapshot? page) => page == null
+      ? ColoredBox(color: Theme.of(context).scaffoldBackgroundColor)
+      : RepaintBoundary(key: ValueKey(page.key), child: page.child);
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (details) =>
+          unawaited(_tap(details.localPosition, constraints.maxWidth)),
+      child: PageView(
+        controller: _controller,
+        onPageChanged: (index) => unawaited(_select(index)),
+        children: [
+          _leaf(widget.previous),
+          _leaf(widget.current),
+          _leaf(widget.next),
+        ],
+      ),
+    ),
+  );
 }
 
 extension on ReaderTurnMode {
@@ -52,6 +156,7 @@ class ReaderDocumentScreen extends StatefulWidget {
     this.chapters = const [],
     this.initialChapterIndex = 0,
     this.loadChapter,
+    this.preloadChapter,
     this.persistReadingPosition = true,
   });
 
@@ -63,6 +168,7 @@ class ReaderDocumentScreen extends StatefulWidget {
   final List<ReaderChapterItem> chapters;
   final int initialChapterIndex;
   final Future<String> Function(int index)? loadChapter;
+  final Future<String> Function(int index)? preloadChapter;
   final bool persistReadingPosition;
 
   @override
@@ -87,6 +193,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   double _pageDragDistance = 0;
   double? _pageDragStartX;
   final ScrollController _scrollController = ScrollController();
+  final ReaderPageCurlController _curlController = ReaderPageCurlController();
   bool _restoreScrollOffset = true;
   int _theme = 0;
   static const _papers = [
@@ -105,6 +212,8 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   String? _fontFamily;
   int _revision = 0;
   late int _activeChapterIndex = widget.initialChapterIndex;
+  final Map<int, NormalizedTextDocument> _chapterDocuments = {};
+  final Map<int, Future<void>> _chapterPrefetches = {};
   ReadingSessionRecorder? _statistics;
 
   @override
@@ -158,6 +267,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       if (!mounted) return;
       setState(() {
         _document = document;
+        _chapterDocuments[_activeChapterIndex] = document;
         _paginator = ViewportPaginator(document);
         _offset = _paginator!.offsetFor(
           position?.blockIndex ?? 0,
@@ -191,6 +301,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       _statistics = ReadingSessionRecorder(
         ReadingStatisticsRepository(database),
       )..resumeReading();
+      unawaited(_preloadNextChapter());
     } catch (error) {
       if (mounted) setState(() => _error = '无法打开此书：$error');
     }
@@ -834,7 +945,13 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     );
   }
 
-  Future<void> _selectChapter(int index) async {
+  Future<void> _selectChapter(
+    int index, {
+    bool openAtEnd = false,
+    Size? viewport,
+    TextStyle? style,
+    TextScaler? scaler,
+  }) async {
     final loader = widget.loadChapter;
     if (loader == null || index == _activeChapterIndex) return;
     setState(() {
@@ -850,12 +967,54 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       setState(() {
         _activeChapterIndex = index;
         _document = document;
+        _chapterDocuments[index] = document;
         _paginator = ViewportPaginator(document);
-        _offset = 0;
+        if (openAtEnd &&
+            viewport != null &&
+            style != null &&
+            scaler != null &&
+            _paginator!.text.isNotEmpty) {
+          _offset = _paginator!
+              .previous(_paginator!.text.length, viewport, style, scaler)
+              .start;
+        } else {
+          _offset = 0;
+        }
       });
+      unawaited(_preloadNextChapter());
     } catch (error) {
       if (mounted) setState(() => _error = '章节加载失败：$error');
     }
+  }
+
+  Future<void> _preloadNextChapter() {
+    final index = _activeChapterIndex + 1;
+    final loader = widget.preloadChapter;
+    if (loader == null ||
+        index < 0 ||
+        index >= widget.chapters.length ||
+        _chapterDocuments.containsKey(index)) {
+      return Future<void>.value();
+    }
+    final existing = _chapterPrefetches[index];
+    if (existing != null) return existing;
+    late final Future<void> pending;
+    pending = (() async {
+      try {
+        final document = await widget.normalize(await loader(index));
+        if (!mounted) return;
+        setState(() => _chapterDocuments[index] = document);
+      } catch (_) {
+        // The current cached chapter remains readable. A failed look-ahead is
+        // retried when the reader actually reaches the boundary.
+      } finally {
+        if (identical(_chapterPrefetches[index], pending)) {
+          _chapterPrefetches.remove(index);
+        }
+      }
+    })();
+    _chapterPrefetches[index] = pending;
+    return pending;
   }
 
   Widget _bookmarkList(BuildContext sheetContext) {
@@ -1407,6 +1566,93 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     );
   }
 
+  Widget _textLeaf(TextPage page, TextStyle style, TextScaler scaler) =>
+      ColoredBox(
+        color: _papers[_theme],
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Text(
+            page.text,
+            textAlign: TextAlign.justify,
+            textScaler: scaler,
+            style: style,
+          ),
+        ),
+      );
+
+  ReaderPageSnapshot _pageSnapshot({
+    required TextPage page,
+    required int chapterIndex,
+    required Size viewport,
+    required TextStyle style,
+    required TextScaler scaler,
+  }) => ReaderPageSnapshot(
+    key: ReaderPageSnapshotKey(
+      pageIdentity: '${widget.book.id}:$chapterIndex:${page.start}',
+      layoutFingerprint:
+          '${viewport.width}x${viewport.height}:$_fontSize:$_lineHeight:${_fontFamily ?? 'system'}',
+      themeId: '$_theme',
+    ),
+    contentRevision: Object.hash(
+      widget.book.fingerprint,
+      chapterIndex,
+      page.start,
+      page.end,
+    ),
+    child: _textLeaf(page, style, scaler),
+  );
+
+  ReaderPageSnapshot? _adjacentChapterSnapshot({
+    required int chapterIndex,
+    required bool lastPage,
+    required Size viewport,
+    required TextStyle style,
+    required TextScaler scaler,
+  }) {
+    final document = _chapterDocuments[chapterIndex];
+    if (document == null) return null;
+    final paginator = ViewportPaginator(document);
+    final page = lastPage && paginator.text.isNotEmpty
+        ? paginator.previous(paginator.text.length, viewport, style, scaler)
+        : paginator.page(0, viewport, style, scaler);
+    return _pageSnapshot(
+      page: page,
+      chapterIndex: chapterIndex,
+      viewport: viewport,
+      style: style,
+      scaler: scaler,
+    );
+  }
+
+  ReaderPageSnapshot? _chapterBoundarySnapshot({
+    required int chapterIndex,
+    required bool forward,
+  }) {
+    if (chapterIndex < 0 || chapterIndex >= widget.chapters.length) return null;
+    return ReaderPageSnapshot(
+      key: ReaderPageSnapshotKey(
+        pageIdentity:
+            '${widget.book.id}:boundary:${forward ? 'forward' : 'backward'}:$chapterIndex',
+        layoutFingerprint: 'boundary',
+        themeId: '$_theme',
+      ),
+      contentRevision: 0,
+      child: ColoredBox(
+        color: _papers[_theme],
+        child: Center(
+          child: Icon(
+            forward
+                ? Icons.arrow_forward_ios_rounded
+                : Icons.arrow_back_ios_new_rounded,
+            color: (_theme == 1 || _theme == 5)
+                ? Colors.white38
+                : Colors.black26,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final document = _document;
@@ -1508,13 +1754,30 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                 style,
                                 scaler,
                               );
-                              void turn(bool forward) {
+                              Future<void> turn(bool forward) async {
                                 final page = _page!;
                                 if (forward &&
                                     page.end >= _paginator!.text.length) {
+                                  if (_activeChapterIndex + 1 <
+                                      widget.chapters.length) {
+                                    await _selectChapter(
+                                      _activeChapterIndex + 1,
+                                    );
+                                  }
                                   return;
                                 }
-                                if (!forward && _offset == 0) return;
+                                if (!forward && _offset == 0) {
+                                  if (_activeChapterIndex > 0) {
+                                    await _selectChapter(
+                                      _activeChapterIndex - 1,
+                                      openAtEnd: true,
+                                      viewport: size,
+                                      style: style,
+                                      scaler: scaler,
+                                    );
+                                  }
+                                  return;
+                                }
                                 setState(() {
                                   _turnDirection = forward ? 1 : -1;
                                   _pageDragDistance = 0;
@@ -1539,12 +1802,173 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                 unawaited(_savePage(_offset));
                               }
 
+                              if (_turnMode == ReaderTurnMode.curl) {
+                                final current = _pageSnapshot(
+                                  page: _page!,
+                                  chapterIndex: _activeChapterIndex,
+                                  viewport: size,
+                                  style: style,
+                                  scaler: scaler,
+                                );
+                                final next =
+                                    _page!.end < _paginator!.text.length
+                                    ? _pageSnapshot(
+                                        page: _paginator!.page(
+                                          _page!.end,
+                                          size,
+                                          style,
+                                          scaler,
+                                        ),
+                                        chapterIndex: _activeChapterIndex,
+                                        viewport: size,
+                                        style: style,
+                                        scaler: scaler,
+                                      )
+                                    : (_adjacentChapterSnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex + 1,
+                                            lastPage: false,
+                                            viewport: size,
+                                            style: style,
+                                            scaler: scaler,
+                                          ) ??
+                                          _chapterBoundarySnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex + 1,
+                                            forward: true,
+                                          ));
+                                final previous = _offset > 0
+                                    ? _pageSnapshot(
+                                        page: _paginator!.previous(
+                                          _offset,
+                                          size,
+                                          style,
+                                          scaler,
+                                        ),
+                                        chapterIndex: _activeChapterIndex,
+                                        viewport: size,
+                                        style: style,
+                                        scaler: scaler,
+                                      )
+                                    : (_adjacentChapterSnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex - 1,
+                                            lastPage: true,
+                                            viewport: size,
+                                            style: style,
+                                            scaler: scaler,
+                                          ) ??
+                                          _chapterBoundarySnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex - 1,
+                                            forward: false,
+                                          ));
+                                return GestureDetector(
+                                  key: const Key('reader-curl-surface'),
+                                  behavior: HitTestBehavior.translucent,
+                                  onTapUp: (details) {
+                                    final x =
+                                        details.localPosition.dx / size.width;
+                                    if (x < .25) {
+                                      unawaited(_curlController.turnBackward());
+                                    } else if (x > .75) {
+                                      unawaited(_curlController.turnForward());
+                                    } else {
+                                      setState(() {
+                                        _chromeVisible = !_chromeVisible;
+                                        _menu = false;
+                                      });
+                                    }
+                                  },
+                                  child: ReaderShaderPageCurl(
+                                    controller: _curlController,
+                                    currentPage: current,
+                                    forwardPage: next,
+                                    backwardPage: previous,
+                                    paperColor: _papers[_theme],
+                                    onTurnForward: () => turn(true),
+                                    onTurnBackward: () => turn(false),
+                                  ),
+                                );
+                              }
+
+                              if (_turnMode == ReaderTurnMode.slide) {
+                                final current = _pageSnapshot(
+                                  page: _page!,
+                                  chapterIndex: _activeChapterIndex,
+                                  viewport: size,
+                                  style: style,
+                                  scaler: scaler,
+                                );
+                                final next =
+                                    _page!.end < _paginator!.text.length
+                                    ? _pageSnapshot(
+                                        page: _paginator!.page(
+                                          _page!.end,
+                                          size,
+                                          style,
+                                          scaler,
+                                        ),
+                                        chapterIndex: _activeChapterIndex,
+                                        viewport: size,
+                                        style: style,
+                                        scaler: scaler,
+                                      )
+                                    : (_adjacentChapterSnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex + 1,
+                                            lastPage: false,
+                                            viewport: size,
+                                            style: style,
+                                            scaler: scaler,
+                                          ) ??
+                                          _chapterBoundarySnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex + 1,
+                                            forward: true,
+                                          ));
+                                final previous = _offset > 0
+                                    ? _pageSnapshot(
+                                        page: _paginator!.previous(
+                                          _offset,
+                                          size,
+                                          style,
+                                          scaler,
+                                        ),
+                                        chapterIndex: _activeChapterIndex,
+                                        viewport: size,
+                                        style: style,
+                                        scaler: scaler,
+                                      )
+                                    : (_adjacentChapterSnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex - 1,
+                                            lastPage: true,
+                                            viewport: size,
+                                            style: style,
+                                            scaler: scaler,
+                                          ) ??
+                                          _chapterBoundarySnapshot(
+                                            chapterIndex:
+                                                _activeChapterIndex - 1,
+                                            forward: false,
+                                          ));
+                                return _ReaderSlidePager(
+                                  key: const Key('reader-paged-surface'),
+                                  current: current,
+                                  next: next,
+                                  previous: previous,
+                                  onNext: () => turn(true),
+                                  onPrevious: () => turn(false),
+                                  onCenterTap: () => setState(() {
+                                    _chromeVisible = !_chromeVisible;
+                                    _menu = false;
+                                  }),
+                                );
+                              }
+
                               return GestureDetector(
-                                key: Key(
-                                  _turnMode == ReaderTurnMode.curl
-                                      ? 'reader-curl-surface'
-                                      : 'reader-paged-surface',
-                                ),
+                                key: Key('reader-paged-surface'),
                                 behavior: HitTestBehavior.opaque,
                                 onHorizontalDragDown: (details) =>
                                     _pageDragStartX = details.globalPosition.dx,
@@ -1570,10 +1994,10 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                         viewportWidth: size.width,
                                       );
                                   if (outcome == PageTurnOutcome.next) {
-                                    turn(true);
+                                    unawaited(turn(true));
                                   } else if (outcome ==
                                       PageTurnOutcome.previous) {
-                                    turn(false);
+                                    unawaited(turn(false));
                                   } else {
                                     setState(() => _pageDragDistance = 0);
                                   }
@@ -1583,9 +2007,9 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                   final x =
                                       details.localPosition.dx / size.width;
                                   if (x < .25) {
-                                    turn(false);
+                                    unawaited(turn(false));
                                   } else if (x > .75) {
-                                    turn(true);
+                                    unawaited(turn(true));
                                   } else {
                                     setState(() {
                                       _chromeVisible = !_chromeVisible;
@@ -1597,32 +2021,19 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                   offset: _turnMode == ReaderTurnMode.slide
                                       ? Offset(_pageDragDistance, 0)
                                       : Offset.zero,
-                                  child: CustomPaint(
-                                    foregroundPainter:
-                                        _turnMode == ReaderTurnMode.curl
-                                        ? _ReaderCurlPainter(
-                                            progress:
-                                                (_pageDragDistance.abs() /
-                                                        size.width)
-                                                    .clamp(0, .96),
-                                            fromRight: _pageDragDistance <= 0,
-                                            paper: _papers[_theme],
-                                          )
-                                        : null,
-                                    child: Align(
-                                      alignment: Alignment.topLeft,
-                                      child: AnimatedSwitcher(
-                                        duration: const Duration(
-                                          milliseconds: 240,
-                                        ),
-                                        transitionBuilder: _pageTransition,
-                                        child: Text(
-                                          _page!.text,
-                                          key: ValueKey(_offset),
-                                          textAlign: TextAlign.justify,
-                                          textScaler: scaler,
-                                          style: style,
-                                        ),
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 240,
+                                      ),
+                                      transitionBuilder: _pageTransition,
+                                      child: Text(
+                                        _page!.text,
+                                        key: ValueKey(_offset),
+                                        textAlign: TextAlign.justify,
+                                        textScaler: scaler,
+                                        style: style,
                                       ),
                                     ),
                                   ),
@@ -1691,62 +2102,4 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
             ),
     );
   }
-}
-
-class _ReaderCurlPainter extends CustomPainter {
-  const _ReaderCurlPainter({
-    required this.progress,
-    required this.fromRight,
-    required this.paper,
-  });
-
-  final double progress;
-  final bool fromRight;
-  final Color paper;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-    final foldWidth = size.width * progress;
-    final edge = fromRight ? size.width - foldWidth : foldWidth;
-    final fold = Path()
-      ..moveTo(edge, 0)
-      ..quadraticBezierTo(
-        fromRight ? size.width + foldWidth * .14 : -foldWidth * .14,
-        size.height * .48,
-        edge,
-        size.height,
-      )
-      ..lineTo(fromRight ? size.width : 0, size.height)
-      ..lineTo(fromRight ? size.width : 0, 0)
-      ..close();
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    canvas.drawPath(
-      fold,
-      Paint()
-        ..shader = LinearGradient(
-          begin: fromRight ? Alignment.centerLeft : Alignment.centerRight,
-          end: fromRight ? Alignment.centerRight : Alignment.centerLeft,
-          colors: [
-            Colors.black.withValues(alpha: .24),
-            Color.lerp(paper, Colors.white, .18)!,
-          ],
-        ).createShader(Offset.zero & size),
-    );
-    canvas.drawPath(
-      fold,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = Colors.black.withValues(alpha: .18),
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _ReaderCurlPainter oldDelegate) =>
-      progress != oldDelegate.progress ||
-      fromRight != oldDelegate.fromRight ||
-      paper != oldDelegate.paper;
 }

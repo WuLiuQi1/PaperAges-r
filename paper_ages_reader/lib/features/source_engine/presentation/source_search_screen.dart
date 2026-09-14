@@ -6,6 +6,7 @@ import '../../../core/storage/app_database.dart';
 import '../../downloads/data/chapter_cache.dart';
 import '../../downloads/data/persistent_download_task_repository.dart';
 import '../../downloads/application/download_manager.dart';
+import '../../downloads/application/online_chapter_cache_policy.dart';
 import '../../downloads/domain/download_task.dart';
 import '../../library/data/local_library_repository.dart';
 import '../../library/domain/library_book.dart';
@@ -16,6 +17,23 @@ import '../data/persistent_source_binding_store.dart';
 import '../domain/source_switch_service.dart';
 import '../domain/source_engine.dart';
 import 'source_switch_screen.dart';
+
+CachedChapterRecord _cachedChapter(SourceChapter chapter) =>
+    CachedChapterRecord(
+      key: chapter.key,
+      title: chapter.title,
+      locator: chapter.locator,
+      ordinal: chapter.ordinal,
+      bookLocator: chapter.bookLocator,
+    );
+
+SourceChapter _sourceChapter(CachedChapterRecord chapter) => SourceChapter(
+  key: chapter.key,
+  title: chapter.title,
+  locator: chapter.locator,
+  ordinal: chapter.ordinal,
+  bookLocator: chapter.bookLocator,
+);
 
 class SourceSearchScreen extends StatefulWidget {
   const SourceSearchScreen({super.key, required this.source});
@@ -152,10 +170,19 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
         source: widget.source.configuration,
         book: widget.book,
       );
-      return await _engine.chapters(
+      final chapters = await _engine.chapters(
         source: widget.source.configuration,
         tocUrl: details.tocUrl,
       );
+      final bookId = NetworkShelfRepository.bookIdFor(
+        sourceUrl: widget.source.url,
+        locator: widget.book.locator,
+      );
+      await (await ChapterCache.defaults()).writeCatalog(
+        '$bookId|${widget.source.url}|${widget.book.locator}',
+        chapters.map(_cachedChapter).toList(growable: false),
+      );
+      return chapters;
     } on SourceEngineFailure catch (error) {
       _error = error.message;
       rethrow;
@@ -175,6 +202,14 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
         }
         return;
       }
+      final failures = await const OnlineChapterCachePolicy().warm(
+        reason: OnlineChapterWarmReason.shelfAdded,
+        chapterCount: chapters.length,
+        loadAndPersist: (index) => _cacheChapter(chapters[index]),
+      );
+      if (failures.isNotEmpty) {
+        throw StateError('第一章预加载失败：${failures.first.error}');
+      }
       final database = await AppDatabase.defaults();
       await NetworkShelfRepository(database).add(
         book: widget.book,
@@ -190,7 +225,30 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('目录不可用，未加入书架：${error.message}')));
       }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('加入书架失败：$error')));
+      }
     }
+  }
+
+  Future<void> _cacheChapter(SourceChapter chapter) async {
+    final cache = await ChapterCache.defaults();
+    final key = ChapterCacheKey(
+      sourceUrl: widget.source.url,
+      sourceVersion: 'v1',
+      locator: chapter.locator,
+      chapterKey: chapter.key,
+      contentRevision: 'v1',
+    );
+    if (await cache.read(key) != null) return;
+    final content = await _engine.content(
+      source: widget.source.configuration,
+      chapterUrl: chapter.locator,
+      bookUrl: widget.book.locator,
+    );
+    await cache.write(key, content);
   }
 
   Future<void> _downloadAll(List<SourceChapter> chapters) async {
@@ -316,7 +374,7 @@ class NetworkChapterScreen extends StatefulWidget {
 class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
   late final StaticSourceEngine _engine = widget.engine ?? StaticSourceEngine();
   late final bool _ownsEngine = widget.engine == null;
-  late final Future<List<SourceChapter>> _directory = _loadDirectory();
+  late Future<List<SourceChapter>> _directory = _loadDirectory();
   String get _bookId =>
       widget.bookId ??
       NetworkShelfRepository.bookIdFor(
@@ -345,24 +403,42 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
   }
 
   Future<List<SourceChapter>> _loadDirectory() async {
-    if (widget.chapters.isNotEmpty) return widget.chapters;
-    final bookLocator = widget.chapter.bookLocator;
-    if (bookLocator == null || !_bookId.startsWith('${widget.source.url}|')) {
+    final database = await AppDatabase.defaults();
+    final binding = PersistentSourceBindingStore(database).bindingFor(_bookId);
+    final activeSource =
+        await LocalSourceRepository(database)
+            .findByUrl(binding?.sourceUrl ?? widget.source.url) ??
+        widget.source;
+    if (binding == null && widget.chapters.isNotEmpty) return widget.chapters;
+    final bookLocator = binding?.bookLocator ?? widget.chapter.bookLocator;
+    if (bookLocator == null) {
       return [widget.chapter];
+    }
+    final cache = await ChapterCache.defaults();
+    final catalogKey = '$_bookId|${activeSource.url}|$bookLocator';
+    final cached = await cache.readCatalog(catalogKey);
+    if (cached != null && cached.isNotEmpty) {
+      return cached.map(_sourceChapter).toList(growable: false);
     }
     try {
       final details = await _engine.details(
-        source: widget.source.configuration,
+        source: activeSource.configuration,
         book: NetworkBook(
-          sourceUrl: widget.source.url,
+          sourceUrl: activeSource.url,
           title: widget.bookTitle ?? widget.chapter.title,
           locator: bookLocator,
         ),
       );
       final chapters = await _engine.chapters(
-        source: widget.source.configuration,
+        source: activeSource.configuration,
         tocUrl: details.tocUrl,
       );
+      if (chapters.isNotEmpty) {
+        await cache.writeCatalog(
+          catalogKey,
+          chapters.map(_cachedChapter).toList(growable: false),
+        );
+      }
       return chapters.isEmpty ? [widget.chapter] : chapters;
     } on SourceEngineFailure {
       return [widget.chapter];
@@ -412,9 +488,28 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
         locator: chapter.locator,
         chapterKey: chapter.key,
         revision: (current?.revision ?? 0) + 1,
+        bookLocator: current?.bookLocator ?? chapter.bookLocator,
       ),
     );
     if (result is SourceSwitchRejected) throw StateError(result.reason);
+    return _readContent(
+      source: activeSource,
+      chapterUrl: chapter.locator,
+      chapterKey: chapter.key,
+    );
+  }
+
+  Future<String> _preloadChapter(
+    int index,
+    List<SourceChapter> chapters,
+  ) async {
+    final chapter = chapters[index];
+    final database = await AppDatabase.defaults();
+    final binding = PersistentSourceBindingStore(database).bindingFor(_bookId);
+    final activeSource =
+        await LocalSourceRepository(database)
+            .findByUrl(binding?.sourceUrl ?? widget.source.url) ??
+        widget.source;
     return _readContent(
       source: activeSource,
       chapterUrl: chapter.locator,
@@ -467,13 +562,30 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
                 .toList(growable: false),
             initialChapterIndex: currentIndex < 0 ? 0 : currentIndex,
             loadChapter: (index) => _selectChapter(index, chapters),
-            onChangeSource: (readerContext) async =>
-                await Navigator.of(readerContext).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => SourceSwitchScreen(bookId: _bookId),
-                  ),
-                ) ??
-                false,
+            preloadChapter: (index) => _preloadChapter(index, chapters),
+            onChangeSource: (readerContext) async {
+              final changed =
+                  await Navigator.of(readerContext).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => SourceSwitchScreen(
+                        bookId: _bookId,
+                        bookTitle: title,
+                        currentChapterIndex: currentIndex < 0
+                            ? 0
+                            : currentIndex,
+                        currentChapterTitle:
+                            chapters[(currentIndex < 0 ? 0 : currentIndex)
+                                    .clamp(0, chapters.length - 1)]
+                                .title,
+                      ),
+                    ),
+                  ) ??
+                  false;
+              if (changed && mounted) {
+                setState(() => _directory = _loadDirectory());
+              }
+              return changed;
+            },
           );
         },
       );

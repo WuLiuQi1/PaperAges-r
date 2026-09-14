@@ -5,12 +5,14 @@ class SourceBinding {
     required this.locator,
     required this.chapterKey,
     required this.revision,
+    this.bookLocator,
   });
   final String bookId;
   final String sourceUrl;
   final Uri locator;
   final String chapterKey;
   final int revision;
+  final Uri? bookLocator;
 }
 
 sealed class SourceSwitchResult {
@@ -48,6 +50,7 @@ class SourceSwitchService {
     required String sourceUrl,
     required String verifiedChapterKey,
     required int expectedRevision,
+    Uri? bookLocator,
   }) {
     if (verifiedChapterKey.trim().isEmpty) {
       return const SourceSwitchRejected('目标章节尚未验证可读');
@@ -59,6 +62,7 @@ class SourceSwitchService {
         locator: locator,
         chapterKey: verifiedChapterKey,
         revision: expectedRevision + 1,
+        bookLocator: bookLocator,
       ),
       expectedRevision: expectedRevision,
     );
