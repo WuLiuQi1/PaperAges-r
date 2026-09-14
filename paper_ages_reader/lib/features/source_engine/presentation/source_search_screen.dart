@@ -278,6 +278,7 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
                         chapter: chapters[index - 1],
                         engine: _engine,
                         bookTitle: widget.book.title,
+                        chapters: chapters,
                         bookId: NetworkShelfRepository.bookIdFor(
                           sourceUrl: widget.source.url,
                           locator: widget.book.locator,
@@ -300,12 +301,14 @@ class NetworkChapterScreen extends StatefulWidget {
     this.engine,
     this.bookTitle,
     this.bookId,
+    this.chapters = const [],
   });
   final StoredBookSource source;
   final SourceChapter chapter;
   final StaticSourceEngine? engine;
   final String? bookTitle;
   final String? bookId;
+  final List<SourceChapter> chapters;
   @override
   State<NetworkChapterScreen> createState() => _NetworkChapterScreenState();
 }
@@ -313,6 +316,7 @@ class NetworkChapterScreen extends StatefulWidget {
 class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
   late final StaticSourceEngine _engine = widget.engine ?? StaticSourceEngine();
   late final bool _ownsEngine = widget.engine == null;
+  late final Future<List<SourceChapter>> _directory = _loadDirectory();
   String get _bookId =>
       widget.bookId ??
       NetworkShelfRepository.bookIdFor(
@@ -333,25 +337,89 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
             .findByUrl(binding?.sourceUrl ?? widget.source.url) ??
         widget.source;
     final chapterUrl = binding?.locator ?? widget.chapter.locator;
+    return _readContent(
+      source: activeSource,
+      chapterUrl: chapterUrl,
+      chapterKey: binding?.chapterKey ?? widget.chapter.key,
+    );
+  }
+
+  Future<List<SourceChapter>> _loadDirectory() async {
+    if (widget.chapters.isNotEmpty) return widget.chapters;
+    final bookLocator = widget.chapter.bookLocator;
+    if (bookLocator == null || !_bookId.startsWith('${widget.source.url}|')) {
+      return [widget.chapter];
+    }
+    try {
+      final details = await _engine.details(
+        source: widget.source.configuration,
+        book: NetworkBook(
+          sourceUrl: widget.source.url,
+          title: widget.bookTitle ?? widget.chapter.title,
+          locator: bookLocator,
+        ),
+      );
+      final chapters = await _engine.chapters(
+        source: widget.source.configuration,
+        tocUrl: details.tocUrl,
+      );
+      return chapters.isEmpty ? [widget.chapter] : chapters;
+    } on SourceEngineFailure {
+      return [widget.chapter];
+    }
+  }
+
+  Future<String> _readContent({
+    required StoredBookSource source,
+    required Uri chapterUrl,
+    required String chapterKey,
+  }) async {
     final cache = await ChapterCache.defaults();
     final key = ChapterCacheKey(
-      sourceUrl: activeSource.url,
+      sourceUrl: source.url,
       sourceVersion: 'v1',
       locator: chapterUrl,
-      chapterKey: binding?.chapterKey ?? widget.chapter.key,
+      chapterKey: chapterKey,
       contentRevision: 'v1',
     );
     final cached = await cache.read(key);
     if (cached != null) return cached;
     final content = await _engine.content(
-      source: activeSource.configuration,
+      source: source.configuration,
       chapterUrl: chapterUrl,
-      bookUrl: _bookId.startsWith('${activeSource.url}|')
+      bookUrl: _bookId.startsWith('${source.url}|')
           ? widget.chapter.bookLocator
           : null,
     );
     await cache.write(key, content);
     return content;
+  }
+
+  Future<String> _selectChapter(int index, List<SourceChapter> chapters) async {
+    final chapter = chapters[index];
+    final database = await AppDatabase.defaults();
+    final bindings = PersistentSourceBindingStore(database);
+    final current = bindings.bindingFor(_bookId);
+    final activeSource =
+        await LocalSourceRepository(database)
+            .findByUrl(current?.sourceUrl ?? widget.source.url) ??
+        widget.source;
+    final result = await bindings.replaceIfCurrent(
+      expectedRevision: current?.revision ?? 0,
+      next: SourceBinding(
+        bookId: _bookId,
+        sourceUrl: activeSource.url,
+        locator: chapter.locator,
+        chapterKey: chapter.key,
+        revision: (current?.revision ?? 0) + 1,
+      ),
+    );
+    if (result is SourceSwitchRejected) throw StateError(result.reason);
+    return _readContent(
+      source: activeSource,
+      chapterUrl: chapter.locator,
+      chapterKey: chapter.key,
+    );
   }
 
   @override
@@ -364,25 +432,50 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
       if (!snapshot.hasData) {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
-      final title = widget.bookTitle ?? widget.chapter.title;
-      return ReaderDocumentScreen(
-        book: LibraryBook(
-          id: _bookId,
-          kind: LibraryBookKind.text,
-          title: title,
-          filePath: '',
-          fingerprint: _bookId,
-          createdAt: DateTime.fromMillisecondsSinceEpoch(0),
-        ),
-        repository: LocalLibraryRepository(snapshot.data!),
-        loadText: _load,
-        onChangeSource: (readerContext) async =>
-            await Navigator.of(readerContext).push<bool>(
-              MaterialPageRoute(
-                builder: (_) => SourceSwitchScreen(bookId: _bookId),
-              ),
-            ) ??
-            false,
+      return FutureBuilder<List<SourceChapter>>(
+        future: _directory,
+        builder: (context, directorySnapshot) {
+          if (!directorySnapshot.hasData) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final chapters = directorySnapshot.data!;
+          final currentIndex = chapters.indexWhere(
+            (chapter) =>
+                chapter.key == widget.chapter.key ||
+                chapter.locator == widget.chapter.locator,
+          );
+          final title = widget.bookTitle ?? widget.chapter.title;
+          return ReaderDocumentScreen(
+            book: LibraryBook(
+              id: _bookId,
+              kind: LibraryBookKind.text,
+              title: title,
+              filePath: '',
+              fingerprint: _bookId,
+              createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+            ),
+            repository: LocalLibraryRepository(snapshot.data!),
+            loadText: _load,
+            persistReadingPosition: false,
+            chapters: chapters
+                .map(
+                  (chapter) =>
+                      ReaderChapterItem(title: chapter.title, key: chapter.key),
+                )
+                .toList(growable: false),
+            initialChapterIndex: currentIndex < 0 ? 0 : currentIndex,
+            loadChapter: (index) => _selectChapter(index, chapters),
+            onChangeSource: (readerContext) async =>
+                await Navigator.of(readerContext).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => SourceSwitchScreen(bookId: _bookId),
+                  ),
+                ) ??
+                false,
+          );
+        },
       );
     },
   );

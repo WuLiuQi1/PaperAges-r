@@ -344,7 +344,11 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   local TXT books, retaining pagination, themes, font controls, contents,
   search, TTS, bookmarks and notes. Its share position is replaced by the
   network-only source-switch action; a committed switch reloads content in the
-  same reader.
+  same reader. The source catalogue is passed into the shared contents sheet;
+  selecting a chapter atomically advances the persisted source binding before
+  loading its cached or remote body. Reopening an original-source shelf entry
+  reconstructs its catalogue; a manually mapped alternate source without a
+  stored book-detail locator can expose only its mapped chapter.
 - Local and online books now share one two-column library grid and the same
   generated-cover presentation. Local covers identify TXT/PDF at bottom left;
   online covers identify the currently bound source. List mode follows the
@@ -364,8 +368,8 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
 - Windows verification: `flutter analyze --no-pub` completed without
   diagnostics; the full native-JS-enabled suite passed 193 tests; 320/390 px
   UI render checks passed; and the 1.0.0+11 Android debug APK built
-  successfully (196,517,386 bytes, SHA-256
-  `3B5E0EE09831493C70BE2DEDD9D84C155AB6412FFDFAF014FB0302EDE8133477`).
+  successfully (235,061,459 bytes, SHA-256
+  `2E238A69AB947F5819A23660B8B2933338DA6341A2BB5A8BD933AD8602FC34E0`).
 
 ## Open-source source workflow adaptation — 1.0.0+8 (2026-09-14)
 

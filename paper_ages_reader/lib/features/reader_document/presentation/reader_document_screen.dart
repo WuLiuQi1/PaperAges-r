@@ -25,6 +25,12 @@ Future<NormalizedTextDocument> normalizeReaderDocument(String text) =>
 
 enum ReaderTurnMode { slide, curl, fade, scroll }
 
+class ReaderChapterItem {
+  const ReaderChapterItem({required this.title, required this.key});
+  final String title;
+  final String key;
+}
+
 extension on ReaderTurnMode {
   String get label => switch (this) {
     ReaderTurnMode.slide => '滑动',
@@ -42,6 +48,10 @@ class ReaderDocumentScreen extends StatefulWidget {
     this.normalize = normalizeReaderDocument,
     this.loadText,
     this.onChangeSource,
+    this.chapters = const [],
+    this.initialChapterIndex = 0,
+    this.loadChapter,
+    this.persistReadingPosition = true,
   });
 
   final LibraryBook book;
@@ -49,6 +59,10 @@ class ReaderDocumentScreen extends StatefulWidget {
   final Future<NormalizedTextDocument> Function(String) normalize;
   final Future<String> Function()? loadText;
   final Future<bool> Function(BuildContext context)? onChangeSource;
+  final List<ReaderChapterItem> chapters;
+  final int initialChapterIndex;
+  final Future<String> Function(int index)? loadChapter;
+  final bool persistReadingPosition;
 
   @override
   State<ReaderDocumentScreen> createState() => _ReaderDocumentScreenState();
@@ -85,6 +99,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   double _lineHeight = 1.45;
   String? _fontFamily;
   int _revision = 0;
+  late int _activeChapterIndex = widget.initialChapterIndex;
   ReadingSessionRecorder? _statistics;
 
   @override
@@ -109,7 +124,9 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
           await (widget.loadText?.call() ??
               widget.repository.readText(widget.book));
       final document = await widget.normalize(text);
-      final position = await widget.repository.readPosition(widget.book.id);
+      final position = widget.persistReadingPosition
+          ? await widget.repository.readPosition(widget.book.id)
+          : null;
       final savedSize = await widget.repository.readPreference('textFontSize');
       final savedLineHeight = await widget.repository.readPreference(
         'textLineHeight',
@@ -227,6 +244,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   }
 
   Future<void> _savePage(int index) async {
+    if (!widget.persistReadingPosition) return;
     final document = _document;
     if (document == null) return;
     final location = _paginator!.anchorFor(index);
@@ -747,33 +765,92 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   Widget _chapterList(
     BuildContext sheetContext,
     List<({String title, int offset})> chapters,
-  ) => ListView.separated(
-    padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
-    itemCount: chapters.length,
-    separatorBuilder: (_, _) => const Divider(height: 1),
-    itemBuilder: (_, index) {
-      final chapter = chapters[index];
-      final page = (chapter.offset / (_page?.text.length ?? 500)).floor() + 1;
-      return Material(
-        color: Colors.transparent,
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(vertical: 5),
-          title: Text(
-            chapter.title,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          trailing: Text(
-            '$page',
-            style: const TextStyle(color: Colors.black45),
-          ),
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _jumpTo(chapter.offset);
-          },
-        ),
+  ) {
+    if (widget.chapters.isNotEmpty && widget.loadChapter != null) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+        itemCount: widget.chapters.length,
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (_, index) {
+          final chapter = widget.chapters[index];
+          final selected = index == _activeChapterIndex;
+          return Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(vertical: 5),
+              title: Text(
+                chapter.title,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+              trailing: selected
+                  ? const Icon(Icons.check_rounded, size: 20)
+                  : Text(
+                      '${index + 1}',
+                      style: const TextStyle(color: Colors.black45),
+                    ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _selectChapter(index);
+              },
+            ),
+          );
+        },
       );
-    },
-  );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+      itemCount: chapters.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (_, index) {
+        final chapter = chapters[index];
+        final page = (chapter.offset / (_page?.text.length ?? 500)).floor() + 1;
+        return Material(
+          color: Colors.transparent,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(vertical: 5),
+            title: Text(
+              chapter.title,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            trailing: Text(
+              '$page',
+              style: const TextStyle(color: Colors.black45),
+            ),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _jumpTo(chapter.offset);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _selectChapter(int index) async {
+    final loader = widget.loadChapter;
+    if (loader == null || index == _activeChapterIndex) return;
+    setState(() {
+      _document = null;
+      _paginator = null;
+      _page = null;
+      _error = null;
+      _history.clear();
+    });
+    try {
+      final document = await widget.normalize(await loader(index));
+      if (!mounted) return;
+      setState(() {
+        _activeChapterIndex = index;
+        _document = document;
+        _paginator = ViewportPaginator(document);
+        _offset = 0;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = '章节加载失败：$error');
+    }
+  }
 
   Widget _bookmarkList(BuildContext sheetContext) {
     final offsets = _bookmarks.toList()..sort();

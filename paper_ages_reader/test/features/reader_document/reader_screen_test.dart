@@ -62,6 +62,11 @@ void main() {
           ),
           repository: repository,
           loadText: () async => '这是在线章节正文。',
+          chapters: const [
+            ReaderChapterItem(title: '第一章', key: '1'),
+            ReaderChapterItem(title: '第二章', key: '2'),
+          ],
+          loadChapter: (index) async => index == 1 ? '第二章在线正文。' : '第一章在线正文。',
           normalize: (text) async => const TextNormalizer().normalize(text),
           onChangeSource: (_) async {
             switches += 1;
@@ -77,6 +82,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('换源'), findsOneWidget);
     expect(find.byTooltip('分享'), findsNothing);
+    await tester.tap(find.textContaining('目录 ·'));
+    await tester.pumpAndSettle();
+    expect(find.text('第一章'), findsOneWidget);
+    expect(find.text('第二章'), findsOneWidget);
+    await tester.tap(find.text('第二章'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('第二章在线正文'), findsOneWidget);
+    await tester.tap(find.byTooltip('阅读菜单'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('换源'));
     await tester.pumpAndSettle();
     expect(switches, 1);
