@@ -8,6 +8,11 @@ import '../../reader_document/presentation/reader_document_screen.dart';
 import '../../downloads/presentation/downloads_screen.dart';
 import '../../source_engine/presentation/source_management_screen.dart';
 import '../../source_engine/presentation/network_shelf_screen.dart';
+import '../../source_engine/data/local_source_repository.dart';
+import '../../source_engine/data/network_shelf_repository.dart';
+import '../../source_engine/data/persistent_source_binding_store.dart';
+import '../../source_engine/domain/source_engine.dart';
+import '../../source_engine/presentation/source_search_screen.dart';
 import '../../statistics/presentation/reading_statistics_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../application/document_decoder.dart';
@@ -90,6 +95,49 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
               : ReaderDocumentScreen(book: book, repository: repository),
         ),
       );
+
+  Future<void> _openNetworkBook(
+    NetworkShelfBook book,
+    AppDatabase database,
+  ) async {
+    final bookId = NetworkShelfRepository.bookIdFor(
+      sourceUrl: book.sourceUrl,
+      locator: book.locator,
+    );
+    final binding = PersistentSourceBindingStore(database).bindingFor(bookId);
+    final source = await LocalSourceRepository(database)
+        .findByUrl(binding?.sourceUrl ?? book.sourceUrl);
+    if (!mounted) return;
+    if (source == null) {
+      _show('此书源未配置，无法打开网络书籍。');
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => binding == null
+            ? NetworkBookScreen(
+                source: source,
+                book: NetworkBook(
+                  sourceUrl: book.sourceUrl,
+                  title: book.title,
+                  author: book.author,
+                  locator: book.locator,
+                ),
+              )
+            : NetworkChapterScreen(
+                source: source,
+                chapter: SourceChapter(
+                  key: binding.chapterKey,
+                  title: book.title,
+                  locator: binding.locator,
+                  ordinal: 0,
+                  bookLocator: book.locator,
+                ),
+              ),
+      ),
+    );
+  }
+
   void _show(String message) =>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
@@ -173,164 +221,252 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         final repository = ready.data!;
-        return StreamBuilder<List<LibraryBook>>(
-          stream: repository.watchBooks(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text('书库无法读取：${snapshot.error}'));
-            }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final query = _searchController.text.trim().toLowerCase();
-            final books = snapshot.data!
-                .where(
-                  (book) =>
-                      query.isEmpty || book.title.toLowerCase().contains(query),
-                )
-                .toList(growable: false);
-            if (books.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.menu_book_outlined,
-                      size: 44,
-                      color: Color(0xFFC5C5C7),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      query.isEmpty ? '你的书库' : '没有匹配的本地书籍',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (query.isEmpty) ...[
-                      const SizedBox(height: 8),
-                      const Text('添加 TXT 或 PDF，开始阅读'),
-                      TextButton(
-                        key: const Key('pick-book-button'),
-                        onPressed: _importing
-                            ? null
-                            : () => _importBook(repository),
-                        child: Text(_importing ? '正在导入…' : '导入书籍'),
-                      ),
-                    ],
-                    const SizedBox(height: 100),
-                  ],
-                ),
-              );
-            }
-            if (_listMode) {
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(32, 24, 32, 130),
-                itemCount: books.length,
-                separatorBuilder: (_, _) => const Divider(height: 32),
-                itemBuilder: (context, index) {
-                  final book = books[index];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: SizedBox(width: 42, child: BookCover(book: book)),
-                    title: Text(
-                      book.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(repository.progressLabel(book.id)),
-                    trailing: IconButton(
-                      tooltip: '${book.title}的更多操作',
-                      icon: const Icon(Icons.more_horiz),
-                      onPressed: () => showBookActions(
-                        context,
-                        book,
-                        () => _openBook(book, repository),
-                      ),
-                    ),
-                    onTap: () => _openBook(book, repository),
-                  );
-                },
-              );
-            }
-            return CustomScrollView(
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
-                  sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisExtent:
-                          (MediaQuery.sizeOf(context).width - 90) / 1.4 + 44,
-                      crossAxisSpacing: 26,
-                      mainAxisSpacing: 24,
-                    ),
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final book = books[index];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () => _openBook(book, repository),
-                            onLongPress: () => showBookActions(
-                              context,
-                              book,
-                              () => _openBook(book, repository),
-                            ),
-                            child: Semantics(
-                              button: true,
-                              label: book.title,
-                              child: BookCover(book: book),
-                            ),
+        return StreamBuilder<List<NetworkShelfBook>>(
+          stream: NetworkShelfRepository(repository.database).watchBooks(),
+          builder: (context, networkSnapshot) {
+            return StreamBuilder<List<LibraryBook>>(
+              stream: repository.watchBooks(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('书库无法读取：${snapshot.error}'));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final query = _searchController.text.trim().toLowerCase();
+                final books = snapshot.data!
+                    .where(
+                      (book) =>
+                          query.isEmpty ||
+                          book.title.toLowerCase().contains(query),
+                    )
+                    .toList(growable: false);
+                final networkBooks =
+                    (networkSnapshot.data ?? const <NetworkShelfBook>[])
+                        .where(
+                          (book) =>
+                              query.isEmpty ||
+                              book.title.toLowerCase().contains(query),
+                        )
+                        .toList(growable: false);
+                if (books.isEmpty && networkBooks.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.menu_book_outlined,
+                          size: 44,
+                          color: Color(0xFFC5C5C7),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          query.isEmpty ? '你的书库' : '没有匹配的本地书籍',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  repository.progressLabel(book.id),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 44,
-                                height: 36,
-                                child: IconButton(
-                                  tooltip: '${book.title}的更多操作',
-                                  padding: EdgeInsets.zero,
-                                  icon: const Icon(Icons.more_horiz, size: 22),
-                                  onPressed: () => showBookActions(
-                                    context,
-                                    book,
-                                    () => _openBook(book, repository),
-                                  ),
-                                ),
-                              ),
-                            ],
+                        ),
+                        if (query.isEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text('添加 TXT 或 PDF，开始阅读'),
+                          TextButton(
+                            key: const Key('pick-book-button'),
+                            onPressed: _importing
+                                ? null
+                                : () => _importBook(repository),
+                            child: Text(_importing ? '正在导入…' : '导入书籍'),
                           ),
                         ],
+                        const SizedBox(height: 100),
+                      ],
+                    ),
+                  );
+                }
+                if (_listMode) {
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(32, 24, 32, 130),
+                    itemCount: networkBooks.length + books.length,
+                    separatorBuilder: (_, _) => const Divider(height: 32),
+                    itemBuilder: (context, index) {
+                      if (index < networkBooks.length) {
+                        final book = networkBooks[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const SizedBox(
+                            width: 42,
+                            child: Icon(Icons.cloud_done_outlined, size: 34),
+                          ),
+                          title: Text(book.title),
+                          subtitle: Text(book.author ?? '在线书籍'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () =>
+                              _openNetworkBook(book, repository.database),
+                        );
+                      }
+                      index -= networkBooks.length;
+                      final book = books[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: SizedBox(
+                          width: 42,
+                          child: BookCover(book: book),
+                        ),
+                        title: Text(
+                          book.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(repository.progressLabel(book.id)),
+                        trailing: IconButton(
+                          tooltip: '${book.title}的更多操作',
+                          icon: const Icon(Icons.more_horiz),
+                          onPressed: () => showBookActions(
+                            context,
+                            book,
+                            () => _openBook(book, repository),
+                          ),
+                        ),
+                        onTap: () => _openBook(book, repository),
                       );
-                    }, childCount: books.length),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 38, 32, 130),
-                    child: Text(
-                      '${books.length} 本书',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    },
+                  );
+                }
+                return CustomScrollView(
+                  slivers: [
+                    if (networkBooks.isNotEmpty) ...[
+                      const SliverPadding(
+                        padding: EdgeInsets.fromLTRB(32, 24, 32, 10),
+                        sliver: SliverToBoxAdapter(
+                          child: Text(
+                            '在线书籍',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 116,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            itemCount: networkBooks.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 12),
+                            itemBuilder: (context, index) {
+                              final book = networkBooks[index];
+                              return SizedBox(
+                                width: 240,
+                                child: Card(
+                                  child: ListTile(
+                                    leading: const Icon(
+                                      Icons.cloud_done_outlined,
+                                    ),
+                                    title: Text(
+                                      book.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(book.author ?? '在线书籍'),
+                                    onTap: () => _openNetworkBook(
+                                      book,
+                                      repository.database,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+                      sliver: SliverGrid(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisExtent:
+                              (MediaQuery.sizeOf(context).width - 90) / 1.4 +
+                              44,
+                          crossAxisSpacing: 26,
+                          mainAxisSpacing: 24,
+                        ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final book = books[index];
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                onTap: () => _openBook(book, repository),
+                                onLongPress: () => showBookActions(
+                                  context,
+                                  book,
+                                  () => _openBook(book, repository),
+                                ),
+                                child: Semantics(
+                                  button: true,
+                                  label: book.title,
+                                  child: BookCover(book: book),
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      repository.progressLabel(book.id),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 44,
+                                    height: 36,
+                                    child: IconButton(
+                                      tooltip: '${book.title}的更多操作',
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(
+                                        Icons.more_horiz,
+                                        size: 22,
+                                      ),
+                                      onPressed: () => showBookActions(
+                                        context,
+                                        book,
+                                        () => _openBook(book, repository),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        }, childCount: books.length),
                       ),
                     ),
-                  ),
-                ),
-              ],
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(32, 38, 32, 130),
+                        child: Text(
+                          '${books.length} 本书',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );

@@ -30,11 +30,15 @@ void main() {
         ordinal: 0,
       );
       final shelf = NetworkShelfRepository(database);
+      final shelfUpdates = shelf.watchBooks().take(2).toList();
       await shelf.add(
         book: book,
         sourceUrl: book.sourceUrl,
         initialChapter: first,
       );
+      final updates = await shelfUpdates;
+      expect(updates.first, isEmpty);
+      expect(updates.last.single.title, '春秋');
       final id = NetworkShelfRepository.bookIdFor(
         sourceUrl: book.sourceUrl,
         locator: book.locator,

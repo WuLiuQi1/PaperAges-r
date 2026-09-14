@@ -155,6 +155,9 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
     } on SourceEngineFailure catch (error) {
       _error = error.message;
       rethrow;
+    } catch (error) {
+      _error = '目录解析失败：$error';
+      rethrow;
     }
   }
 
@@ -269,6 +272,7 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
                       builder: (_) => NetworkChapterScreen(
                         source: widget.source,
                         chapter: chapters[index - 1],
+                        engine: _engine,
                       ),
                     ),
                   ),
@@ -284,19 +288,22 @@ class NetworkChapterScreen extends StatefulWidget {
     super.key,
     required this.source,
     required this.chapter,
+    this.engine,
   });
   final StoredBookSource source;
   final SourceChapter chapter;
+  final StaticSourceEngine? engine;
   @override
   State<NetworkChapterScreen> createState() => _NetworkChapterScreenState();
 }
 
 class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
-  late final StaticSourceEngine _engine = StaticSourceEngine();
+  late final StaticSourceEngine _engine = widget.engine ?? StaticSourceEngine();
+  late final bool _ownsEngine = widget.engine == null;
   late final Future<String> _content = _load();
   @override
   void dispose() {
-    _engine.close();
+    if (_ownsEngine) _engine.close();
     super.dispose();
   }
 
@@ -326,8 +333,6 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
     body: FutureBuilder<String>(
       future: _content,
       builder: (context, snapshot) {
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
         if (snapshot.hasError)
           return Center(
             child: Padding(
@@ -335,6 +340,8 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
               child: Text('正文不可用：${snapshot.error}'),
             ),
           );
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
         return SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),

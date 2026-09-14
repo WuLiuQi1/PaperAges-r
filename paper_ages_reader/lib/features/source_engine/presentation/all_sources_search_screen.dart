@@ -10,9 +10,11 @@ class AllSourcesSearchScreen extends StatefulWidget {
     super.key,
     required this.sources,
     this.initialQuery = '',
+    this.onManageSources,
   });
   final List<StoredBookSource> sources;
   final String initialQuery;
+  final VoidCallback? onManageSources;
   @override
   State<AllSourcesSearchScreen> createState() => _AllSourcesSearchScreenState();
 }
@@ -173,7 +175,18 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('在线搜索')),
+    appBar: AppBar(
+      title: const Text('在线搜索'),
+      actions: [
+        if (widget.onManageSources != null)
+          IconButton(
+            tooltip: '书源管理',
+            onPressed: widget.onManageSources,
+            icon: const Icon(Icons.public_outlined),
+          ),
+        const SizedBox(width: 8),
+      ],
+    ),
     body: Column(
       children: [
         Padding(
@@ -231,7 +244,13 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
           ),
         Expanded(
           child: _results.isEmpty && !_loading
-              ? const Center(child: Text('输入书名后，已启用书源会逐步返回结果。'))
+              ? Center(
+                  child: Text(
+                    _safeSources.isEmpty
+                        ? '请先从右上角导入并启用书源。'
+                        : '输入书名后，已启用书源会逐步返回结果。',
+                  ),
+                )
               : _books.isEmpty && !_loading
               ? Center(
                   child: Text(

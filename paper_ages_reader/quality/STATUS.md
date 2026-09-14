@@ -2,6 +2,34 @@
 
 Last updated: 2026-09-14
 
+## Online shelf/search and chapter stability correction (1.0.0+10)
+
+- The supplied `Analytics-2026-09-14-080008.ips.ca.synced` file is an Apple
+  CoreAnalytics daily aggregation containing FedStats/PFL events. It has no
+  Paper Ages process record, exception type, crashed thread or stack frames,
+  so it is not usable as an application crash report and no native crash root
+  cause is claimed from it.
+- Code review found two deterministic lifecycle defects. Production callers
+  opened independent instances of the same JSON database, so an online-shelf
+  write could not notify the Library screen's stream. The default database is
+  now one shared process instance. The Library screen subscribes to online
+  shelf rows and displays them together with local TXT/PDF books.
+- A directory page and its chapter page previously owned separate source/JS
+  runtimes. Chapter navigation now reuses the details/catalogue runtime and
+  retains the book locator; shelf resume also reconstructs that book locator.
+  Unexpected catalogue failures and chapter-body failures remain visible as
+  error UI rather than being mistaken for a perpetual loading state.
+- The main Search tab is now the aggregated online-source search directly.
+  Local-library filtering remains available within the Library screen, and
+  source management is reachable from the online-search app bar.
+- Verification: static analysis reports no diagnostics, all 191 tests pass
+  with native QuickJS enabled, and the Android Debug APK builds successfully
+  at 196,507,558 bytes (SHA-256
+  `FFC2D7E59284719AE9F8365E10DDF63C9BE38AE72574B7D80C3B4109079300D8`).
+  The reported iPhone interaction still requires retesting with this build; if
+  it crashes again, obtain the `.ips` whose process is Paper Ages/Runner and
+  which contains exception and thread information.
+
 ## Open Reading runtime migration (1.0.0+9)
 
 - The earlier reduced `StaticSourceEngine` implementation has been replaced by

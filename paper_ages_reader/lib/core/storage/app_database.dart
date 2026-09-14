@@ -14,7 +14,11 @@ class AppDatabase {
   Map<String, Object?> _data = _empty();
   Future<void> _transactionTail = Future<void>.value();
 
-  static Future<AppDatabase> defaults() async {
+  static Future<AppDatabase>? _defaultInstance;
+
+  static Future<AppDatabase> defaults() => _defaultInstance ??= _openDefault();
+
+  static Future<AppDatabase> _openDefault() async {
     final directory = await getApplicationDocumentsDirectory();
     final database = AppDatabase._(
       File('${directory.path}${Platform.pathSeparator}paper_ages_state.json'),

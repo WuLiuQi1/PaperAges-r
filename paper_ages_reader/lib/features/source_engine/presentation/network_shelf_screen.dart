@@ -81,6 +81,7 @@ class NetworkShelfScreen extends StatelessWidget {
                               title: book.title,
                               locator: binding.locator,
                               ordinal: 0,
+                              bookLocator: book.locator,
                             ),
                           ),
                         ),

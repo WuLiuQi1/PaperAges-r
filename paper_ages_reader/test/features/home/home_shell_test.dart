@@ -43,7 +43,14 @@ void main() {
           },
           'preferences': {},
           'sources': [],
-          'networkBooks': [],
+          'networkBooks': [
+            {
+              'title': '云端春秋',
+              'author': '测试作者',
+              'sourceUrl': 'https://source.example',
+              'locator': 'https://source.example/book/1',
+            },
+          ],
           'readingStatistics': {},
         }),
       );
@@ -136,7 +143,8 @@ void main() {
       await capture('library');
       await tester.tap(find.byTooltip('列表视图'));
       await tester.pumpAndSettle();
-      expect(find.byType(ListTile), findsNWidgets(2));
+      expect(find.byType(ListTile), findsNWidgets(3));
+      expect(find.text('云端春秋'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('网格视图'));
       await tester.pumpAndSettle();
@@ -148,27 +156,11 @@ void main() {
       await tester.runAsync(() => tester.pumpAndSettle());
       await tester.tap(find.text('搜索').last);
       await tester.runAsync(() => tester.pumpAndSettle());
-      expect(find.text('搜索书库'), findsOneWidget);
+      expect(find.text('在线搜索'), findsOneWidget);
+      expect(find.text('请先从右上角导入并启用书源。'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await capture('search');
-      await tester.enterText(
-        find.byKey(const Key('main-library-search')),
-        '山海',
-      );
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
-      await tester.runAsync(() => tester.pumpAndSettle());
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is ListTile &&
-              widget.title is Text &&
-              (widget.title! as Text).data == '山海拾记',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('沿着河流走'), findsNothing);
+      expect(find.byType(SearchBar), findsOneWidget);
       expect(tester.takeException(), isNull);
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pumpAndSettle();
