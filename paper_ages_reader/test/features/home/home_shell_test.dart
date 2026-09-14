@@ -101,9 +101,16 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
       await tester.runAsync(() => tester.pumpAndSettle());
-      expect(find.text('之前读过'), findsOneWidget);
-      expect(find.text('继续阅读'), findsNothing);
-      expect(find.text('阅读目标'), findsNothing);
+      expect(find.text('继续阅读'), findsWidgets);
+      expect(find.text('阅读目标'), findsWidgets);
+      expect(find.text('之前读过'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is ListView && widget.scrollDirection == Axis.horizontal,
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       Future<void> capture(String name) async {
         if (!const bool.fromEnvironment('CAPTURE_UI')) return;

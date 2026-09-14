@@ -2,11 +2,11 @@
 
 Last updated: 2026-09-14
 
-## Reader interaction follow-up (1.0.0+6)
+## Reader and home interaction follow-up (1.0.0+7)
 
-- Home now contains only the `之前读过` section; the continue-reading and
-  reading-goal panels were removed without deleting stored progress or
-  statistics.
+- Home follows the supplied reference with one horizontally scrolling
+  `继续阅读` shelf, restored reading-goal arc/action, and a real seven-day
+  activity strip. It does not add a second vertical previously-read section.
 - The reader's dark directory/progress capsule accepts horizontal drag and
   saves the resulting text anchor. Its tap action still opens chapters.
 - Reader share uses the native share sheet, listening uses platform TTS, and
