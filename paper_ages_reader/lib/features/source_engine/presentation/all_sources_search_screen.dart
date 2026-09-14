@@ -6,22 +6,93 @@ import '../domain/source_engine.dart';
 import 'source_search_screen.dart';
 
 class AllSourcesSearchScreen extends StatefulWidget {
-  const AllSourcesSearchScreen({super.key, required this.sources});
+  const AllSourcesSearchScreen({
+    super.key,
+    required this.sources,
+    this.initialQuery = '',
+  });
   final List<StoredBookSource> sources;
+  final String initialQuery;
   @override
   State<AllSourcesSearchScreen> createState() => _AllSourcesSearchScreenState();
 }
 
 class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
-  static const _maxConcurrentSearches = 3;
+  static const _maxConcurrentSearches = 8;
+  static const _maxSources = 300;
   final _query = TextEditingController();
   SourceCancellationToken? _token;
   final _results = <_SourceSearchResult>[];
   var _loading = false;
+  String? _selectedSourceUrl;
+  var _page = 1;
+  var _hasMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _query.text = widget.initialQuery;
+    if (_query.text.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _search());
+    }
+  }
 
   List<StoredBookSource> get _safeSources => widget.sources
-      .where((source) => source.state == SourceImportState.ready)
+      .where(
+        (source) => source.enabled && source.state == SourceImportState.ready,
+      )
+      .take(_maxSources)
       .toList(growable: false);
+
+  List<StoredBookSource> get _selectedSources => _selectedSourceUrl == null
+      ? _safeSources
+      : _safeSources
+            .where((source) => source.url == _selectedSourceUrl)
+            .toList(growable: false);
+
+  void _changeScope(String? sourceUrl) {
+    if (_selectedSourceUrl == sourceUrl) return;
+    _token?.cancel();
+    setState(() {
+      _selectedSourceUrl = sourceUrl;
+      _results.clear();
+      _page = 1;
+      _hasMore = false;
+      _loading = false;
+    });
+    if (_query.text.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _search());
+    }
+  }
+
+  List<({StoredBookSource source, NetworkBook book})> get _books {
+    final query = _query.text.trim().toLowerCase();
+    final seen = <String>{};
+    final books = <({StoredBookSource source, NetworkBook book})>[];
+    for (final result in _results) {
+      for (final book in result.books) {
+        final key = '${result.source.url}|${book.locator}';
+        if (seen.add(key)) books.add((source: result.source, book: book));
+      }
+    }
+    int score(NetworkBook book) {
+      final title = book.title.toLowerCase();
+      final author = (book.author ?? '').toLowerCase();
+      if (title == query) return 0;
+      if (title.startsWith(query)) return 1;
+      if (title.contains(query)) return 2;
+      if (author.contains(query)) return 3;
+      return 4;
+    }
+
+    books.sort((left, right) {
+      final relevance = score(left.book).compareTo(score(right.book));
+      return relevance != 0
+          ? relevance
+          : left.book.title.compareTo(right.book.title);
+    });
+    return books;
+  }
 
   @override
   void dispose() {
@@ -30,7 +101,7 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
     super.dispose();
   }
 
-  Future<void> _search() async {
+  Future<void> _search({bool loadMore = false}) async {
     final query = _query.text.trim();
     if (query.isEmpty) return;
     _token?.cancel();
@@ -38,24 +109,36 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
     _token = token;
     setState(() {
       _loading = true;
-      _results.clear();
+      if (loadMore) {
+        _page += 1;
+      } else {
+        _page = 1;
+        _results.clear();
+      }
+      _hasMore = false;
     });
-    final sources = _safeSources;
+    final sources = _selectedSources;
     var nextIndex = 0;
     Future<void> worker() async {
       while (true) {
         if (token != _token) return;
         if (nextIndex >= sources.length) return;
         final source = sources[nextIndex++];
-        final engine = StaticSourceEngine();
+        final engine = StaticSourceEngine(
+          limits: const SourceEngineLimits(timeout: Duration(seconds: 6)),
+        );
         try {
           final books = await engine.search(
             source: source.configuration,
             query: query,
+            page: _page,
             cancellationToken: token,
           );
           if (mounted && identical(token, _token)) {
-            setState(() => _results.add(_SourceSearchResult(source, books)));
+            setState(() {
+              _results.add(_SourceSearchResult(source, books));
+              if (books.isNotEmpty) _hasMore = true;
+            });
           }
         } on CancelledFailure {
           return;
@@ -73,6 +156,10 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
       }
     }
 
+    if (sources.isEmpty) {
+      if (mounted && identical(token, _token)) setState(() => _loading = false);
+      return;
+    }
     await Future.wait(
       List.generate(
         _maxConcurrentSearches < sources.length
@@ -86,14 +173,14 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('搜索全部书源')),
+    appBar: AppBar(title: const Text('在线搜索')),
     body: Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
           child: SearchBar(
             controller: _query,
-            hintText: '搜索书名（最多同时查询 $_maxConcurrentSearches 个书源）',
+            hintText: '搜索书名或作者',
             onSubmitted: (_) => _search(),
             trailing: [
               IconButton(
@@ -104,51 +191,96 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
             ],
           ),
         ),
+        SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  selected: _selectedSourceUrl == null,
+                  label: Text('全部 · ${_safeSources.length}'),
+                  onSelected: (_) => _changeScope(null),
+                ),
+              ),
+              for (final source in _safeSources)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    selected: _selectedSourceUrl == source.url,
+                    label: Text(source.name),
+                    onSelected: (_) => _changeScope(source.url),
+                  ),
+                ),
+            ],
+          ),
+        ),
         if (_loading) const LinearProgressIndicator(),
+        if (_results.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '第 $_page 页 · ${_books.length} 项',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
         Expanded(
           child: _results.isEmpty && !_loading
-              ? const Center(child: Text('输入书名后，安全书源会逐步返回结果。'))
-              : ListView.builder(
-                  itemCount: _results.length,
+              ? const Center(child: Text('输入书名后，已启用书源会逐步返回结果。'))
+              : _books.isEmpty && !_loading
+              ? Center(
+                  child: Text(
+                    _results.any((result) => result.error != null)
+                        ? '未找到结果，部分书源请求失败'
+                        : '没有找到匹配结果',
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: _books.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final result = _results[index];
-                    if (result.error case final error?) {
-                      return ListTile(
-                        leading: const Icon(Icons.error_outline),
-                        title: Text(result.source.name),
-                        subtitle: Text('此书源不可用：$error'),
-                      );
-                    }
-                    if (result.books.isEmpty) {
-                      return ListTile(
-                        title: Text(result.source.name),
-                        subtitle: const Text('无匹配结果'),
-                      );
-                    }
-                    return ExpansionTile(
-                      title: Text(
-                        '${result.source.name} · ${result.books.length} 项',
+                    final result = _books[index];
+                    return ListTile(
+                      title: Text(result.book.title),
+                      subtitle: Text(
+                        [
+                          if (result.book.author?.isNotEmpty ?? false)
+                            result.book.author!,
+                          result.source.name,
+                        ].join(' · '),
                       ),
-                      children: result.books
-                          .map(
-                            (book) => ListTile(
-                              title: Text(book.title),
-                              subtitle: Text(book.author ?? result.source.name),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => NetworkBookScreen(
-                                    source: result.source,
-                                    book: book,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(growable: false),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => NetworkBookScreen(
+                            source: result.source,
+                            book: result.book,
+                          ),
+                        ),
+                      ),
                     );
                   },
                 ),
         ),
+        if (!_loading && _books.isNotEmpty && _hasMore)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _search(loadMore: true),
+                  child: const Text('加载下一页'),
+                ),
+              ),
+            ),
+          ),
       ],
     ),
   );

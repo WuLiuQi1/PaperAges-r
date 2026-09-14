@@ -1,0 +1,15 @@
+Paper Ages Reader
+Copyright (C) 2026 Paper Ages Reader contributors
+
+License: AGPL-3.0-only
+
+The book-source management and aggregated-search design is adapted from ideas
+and behavior in Open Reading (开元阅读):
+https://github.com/miloquinn/open-reading
+
+Reference snapshot reviewed during this work:
+b92c850a7e5758e7734bd757c1dc23139ca33276
+
+Open Reading is distributed under AGPL-3.0-only at that snapshot. This notice
+does not imply endorsement by its authors. Existing third-party dependencies
+retain their respective licenses.

@@ -81,6 +81,28 @@ void main() {
     },
   );
 
+  test('substitutes the requested search page', () async {
+    Uri? requested;
+    final engine = StaticSourceEngine(
+      client: MockClient((request) async {
+        requested = request.url;
+        return http.Response.bytes(
+          utf8.encode(
+            '<div class="book"><a class="title" href="/book/2">第二页</a></div>',
+          ),
+          200,
+          headers: const {'content-type': 'text/html; charset=utf-8'},
+        );
+      }),
+    );
+    final source = Map<String, Object?>.from(staticSource)
+      ..['searchUrl'] = '/search?q={{key}}&page={{page}}';
+    final books = await engine.search(source: source, query: '书', page: 2);
+    expect(requested!.queryParameters['page'], '2');
+    expect(books.single.title, '第二页');
+    engine.close();
+  });
+
   test('rejects missing mandatory rules before any HTTP request', () async {
     var calls = 0;
     final engine = StaticSourceEngine(

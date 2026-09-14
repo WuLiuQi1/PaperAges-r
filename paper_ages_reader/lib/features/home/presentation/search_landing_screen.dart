@@ -42,7 +42,7 @@ class _SearchLandingScreenState extends State<SearchLandingScreen> {
   Future<void> _online() async {
     setState(() => _loading = true);
     try {
-      final database = await AppDatabase.defaults();
+      final database = await _database;
       final sources = await LocalSourceRepository(database)
           .watchSources()
           .first;
@@ -50,9 +50,15 @@ class _SearchLandingScreenState extends State<SearchLandingScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) =>
-              sources.any((source) => source.state == SourceImportState.ready)
-              ? AllSourcesSearchScreen(sources: sources)
-              : const SourceManagementScreen(),
+              sources.any(
+                (source) =>
+                    source.enabled && source.state == SourceImportState.ready,
+              )
+              ? AllSourcesSearchScreen(
+                  sources: sources,
+                  initialQuery: _controller.text.trim(),
+                )
+              : SourceManagementScreen(database: database),
         ),
       );
     } catch (error) {
@@ -79,7 +85,14 @@ class _SearchLandingScreenState extends State<SearchLandingScreen> {
             } else {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const SourceManagementScreen(),
+                  builder: (_) => FutureBuilder<AppDatabase>(
+                    future: _database,
+                    builder: (context, ready) => ready.hasData
+                        ? SourceManagementScreen(database: ready.data)
+                        : const Scaffold(
+                            body: Center(child: CupertinoActivityIndicator()),
+                          ),
+                  ),
                 ),
               );
             }

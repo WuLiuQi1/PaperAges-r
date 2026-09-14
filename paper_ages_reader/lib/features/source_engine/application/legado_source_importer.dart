@@ -11,8 +11,18 @@ class LegadoSourceImporter {
   final RuleSafetyPolicy policy;
 
   SourceImportReport importJson(String source) {
-    final decoded = jsonDecode(source);
-    final entries = decoded is List ? decoded : [decoded];
+    final text = source.replaceFirst('\ufeff', '').trim();
+    if (text.isEmpty) throw const FormatException('书源 JSON 为空');
+    final decoded = jsonDecode(text);
+    final entries = switch (decoded) {
+      List value => value,
+      Map value when value.containsKey('bookSourceUrl') => [value],
+      Map value => _wrappedEntries(value),
+      _ => throw const FormatException('书源必须是 JSON 对象或数组'),
+    };
+    if (entries.length > 10000) {
+      throw const FormatException('书源数量超过 10000 个');
+    }
     final imported = <ImportedBookSource>[];
     final rejected = <SourceImportFailure>[];
     for (var index = 0; index < entries.length; index++) {
@@ -36,6 +46,7 @@ class LegadoSourceImporter {
         ImportedBookSource(
           name: name,
           url: url,
+          enabled: _enabled(config['enabled']),
           rawConfiguration: Map.unmodifiable(config),
           state: report.canExecute
               ? SourceImportState.ready
@@ -51,6 +62,21 @@ class LegadoSourceImporter {
       failures: List.unmodifiable(rejected),
     );
   }
+
+  static List _wrappedEntries(Map decoded) {
+    for (final key in const ['bookSourceList', 'sources', 'data']) {
+      final value = decoded[key];
+      if (value is List) return value;
+    }
+    throw const FormatException('未找到 bookSourceList、sources 或 data 书源列表');
+  }
+
+  static bool _enabled(Object? value) => switch (value) {
+    bool enabled => enabled,
+    num enabled => enabled != 0,
+    String enabled => enabled.toLowerCase() != 'false' && enabled != '0',
+    _ => true,
+  };
 }
 
 class SourceImportReport {
@@ -71,12 +97,14 @@ class ImportedBookSource {
   const ImportedBookSource({
     required this.name,
     required this.url,
+    required this.enabled,
     required this.rawConfiguration,
     required this.state,
     required this.unsafePaths,
   });
   final String name;
   final String url;
+  final bool enabled;
   final Map<String, Object?> rawConfiguration;
   final SourceImportState state;
   final List<String> unsafePaths;

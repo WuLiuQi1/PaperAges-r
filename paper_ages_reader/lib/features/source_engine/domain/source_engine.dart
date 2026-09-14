@@ -102,10 +102,14 @@ class StaticSourceEngine {
   Future<List<NetworkBook>> search({
     required Map<String, Object?> source,
     required String query,
+    int page = 1,
     SourceCancellationToken? cancellationToken,
   }) async {
     _ensureSafe(source);
     if (query.trim().isEmpty) throw const ParseFailure('Search query is empty');
+    if (page < 1 || page > limits.maxPages) {
+      throw const ParseFailure('Search page is outside the allowed range');
+    }
     final template = source['searchUrl'];
     final rules = source['ruleSearch'];
     if (template is! String || rules is! Map)
@@ -117,7 +121,7 @@ class StaticSourceEngine {
         ? template
         : _runScript(script.$2, script.$1, {
             'key': query,
-            'page': 1,
+            'page': page,
             'baseUrl': _sourceUri(source).toString(),
           }, (_) => null).toString();
     _validateSearchTemplate(searchTemplate);
@@ -138,7 +142,7 @@ class StaticSourceEngine {
         _sourceUri(source),
         searchTemplate
             .replaceAll('{{key}}', Uri.encodeQueryComponent(query))
-            .replaceAll('{{page}}', '1'),
+            .replaceAll('{{page}}', '$page'),
       ),
       cancellationToken,
     );

@@ -281,6 +281,31 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   Android installation was performed.
 # Reader / source correction — 1.0.0+4 (2026-09-13)
 
+## Open-source source workflow adaptation — 1.0.0+8 (2026-09-14)
+
+- With explicit user approval, the project adopts AGPL-3.0-only and records
+  Open Reading attribution plus the exact reviewed commit in `NOTICE`.
+- Source management now preserves imported enabled state and supports query,
+  enabled/disabled/runnable filters, group filters, individual switches,
+  selection, bulk enable/disable, and deletion with confirmation. Removal is
+  atomic and refuses any selection containing a source bound to a shelf book.
+- Aggregated search now includes only enabled runnable sources, supports all or
+  single-source scope, runs at most eight requests concurrently with six-second
+  request timeouts, limits a run to 300 sources, progressively deduplicates and
+  relevance-sorts results, suppresses stale generations, and can request later
+  `{{page}}` pages.
+- This phase does not yet port the complete Open Reading rule runtime. In
+  particular XPath/JSONPath, complex request expressions, login/WebView
+  workflows, cookies and the full JavaScript bridge remain incomplete and must
+  not be reported as universally compatible.
+- Verification on Windows: `flutter analyze --no-pub` completed with no
+  diagnostics; the full suite passed 98 tests with native QuickJS tests enabled;
+  `flutter build apk --debug --no-pub` produced the 1.0.0+8 debug APK
+  (193,911,134 bytes; SHA-256
+  `821364BEC19E3CB44E73634FA3E1B9CD90B3EDA866BE7848B11AA35C5B94B8D1`).
+  No live source, physical Android device, or iOS device was exercised in this
+  phase.
+
 ## Apple Books recording correction — 1.0.0+5
 
 - Reviewed the complete user-supplied 52.26-second HEVC recording and extracted

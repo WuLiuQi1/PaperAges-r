@@ -29,4 +29,19 @@ void main() {
     expect(result.failures.single.index, 0);
     expect(result.imported.single.name, 'ok');
   });
+
+  test('preserves the Legado enabled flag', () {
+    final result = importer.importJson(
+      '[{"bookSourceName":"off","bookSourceUrl":"https://off.example","enabled":false}]',
+    );
+    expect(result.imported.single.enabled, isFalse);
+  });
+
+  test('accepts BOM and common wrapped source-list payloads', () {
+    final result = importer.importJson(
+      '\ufeff{"bookSourceList":[{"bookSourceName":"wrapped","bookSourceUrl":"https://wrapped.example","enabled":0}]}',
+    );
+    expect(result.imported.single.name, 'wrapped');
+    expect(result.imported.single.enabled, isFalse);
+  });
 }

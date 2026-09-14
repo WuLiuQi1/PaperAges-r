@@ -1,5 +1,7 @@
 # Paper Ages Reader
 
+> SPDX-License-Identifier: AGPL-3.0-only
+
 Flutter reader for Android and iOS. The release name, bundle identifier, signing identity and store distribution remain intentionally unconfigured.
 
 ## Current delivery state
@@ -7,6 +9,15 @@ Flutter reader for Android and iOS. The release name, bundle identifier, signing
 The project has local TXT/PDF reading, Legado source workflows including a bounded JavaScript rule runtime, cache-backed downloads, system TTS/share integration, local statistics, WebDAV event foundations, and a three-tab home shell. Detailed evidence and limits are in [quality/STATUS.md](quality/STATUS.md).
 
 This is **not an accepted release**: real Android device tests, iOS/macOS validation, background/lock-screen TTS, live-source compatibility, and two-device WebDAV recovery remain required.
+
+## License and attribution
+
+Paper Ages Reader is licensed under AGPL-3.0-only. Its book-source management
+and aggregated-search design is adapted from the AGPL-licensed
+[Open Reading](https://github.com/miloquinn/open-reading) project, using commit
+`b92c850a7e5758e7734bd757c1dc23139ca33276` as the reviewed reference. See
+[LICENSE](LICENSE) and [NOTICE](NOTICE). No claim is made that Paper Ages Reader
+has complete Open Reading/Legado runtime compatibility yet.
 
 ## Windows development
 
