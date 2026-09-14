@@ -15,6 +15,7 @@ import '../../library/data/local_library_repository.dart';
 import '../../library/domain/library_book.dart';
 import '../../statistics/application/reading_session_recorder.dart';
 import '../../statistics/data/reading_statistics_repository.dart';
+import '../../reader_layout/domain/page_turn_policy.dart';
 import '../domain/normalized_text_document.dart';
 import 'viewport_paginator.dart';
 
@@ -83,6 +84,10 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
   double _brightness = 1;
   ReaderTurnMode _turnMode = ReaderTurnMode.slide;
   double _turnDirection = 1;
+  double _pageDragDistance = 0;
+  double? _pageDragStartX;
+  final ScrollController _scrollController = ScrollController();
+  bool _restoreScrollOffset = true;
   int _theme = 0;
   static const _papers = [
     Color(0xFFFFFFFF),
@@ -232,6 +237,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     final recorder = _statistics;
     if (recorder != null) unawaited(recorder.pauseReading());
     if (_speaking) unawaited(_stopTtsSilently());
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1304,7 +1310,11 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       ),
     );
     if (selected == null) return;
-    setState(() => _turnMode = selected);
+    setState(() {
+      _turnMode = selected;
+      _pageDragDistance = 0;
+      if (selected == ReaderTurnMode.scroll) _restoreScrollOffset = true;
+    });
     await widget.repository.savePreference('readerTurnMode', selected.name);
   }
 
@@ -1340,6 +1350,61 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
         child: child,
       ),
     };
+  }
+
+  void _restoreContinuousScroll() {
+    if (!_restoreScrollOffset) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final extent = _scrollController.position.maxScrollExtent;
+      final length = _paginator?.text.length ?? 0;
+      final fraction = length == 0 ? 0.0 : _offset / length;
+      _scrollController.jumpTo((extent * fraction).clamp(0, extent));
+      _restoreScrollOffset = false;
+    });
+  }
+
+  void _commitContinuousScroll() {
+    if (!_scrollController.hasClients || _paginator == null) return;
+    final extent = _scrollController.position.maxScrollExtent;
+    final fraction = extent <= 0
+        ? 0.0
+        : (_scrollController.offset / extent).clamp(0.0, 1.0);
+    final nextOffset = (_paginator!.text.length * fraction).round();
+    setState(() => _offset = nextOffset.clamp(0, _paginator!.text.length));
+    unawaited(_savePage(_offset));
+  }
+
+  Widget _continuousScrollSurface(TextStyle style, TextScaler scaler) {
+    _restoreContinuousScroll();
+    return NotificationListener<ScrollEndNotification>(
+      onNotification: (_) {
+        _commitContinuousScroll();
+        return false;
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => setState(() {
+          _chromeVisible = !_chromeVisible;
+          _menu = false;
+        }),
+        child: SingleChildScrollView(
+          key: const Key('reader-continuous-scroll-surface'),
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 36),
+          child: SizedBox(
+            width: double.infinity,
+            child: Text(
+              _paginator!.text,
+              textAlign: TextAlign.justify,
+              textScaler: scaler,
+              style: style,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1434,6 +1499,9 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                     ? const Color(0xFFECECEC)
                                     : const Color(0xFF222222),
                               );
+                              if (_turnMode == ReaderTurnMode.scroll) {
+                                return _continuousScrollSurface(style, scaler);
+                              }
                               _page = _paginator!.page(
                                 _offset,
                                 size,
@@ -1449,6 +1517,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                 if (!forward && _offset == 0) return;
                                 setState(() {
                                   _turnDirection = forward ? 1 : -1;
+                                  _pageDragDistance = 0;
                                   if (forward) {
                                     _history.add(_offset);
                                     _offset = page.end;
@@ -1471,10 +1540,44 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                               }
 
                               return GestureDetector(
+                                key: Key(
+                                  _turnMode == ReaderTurnMode.curl
+                                      ? 'reader-curl-surface'
+                                      : 'reader-paged-surface',
+                                ),
                                 behavior: HitTestBehavior.opaque,
+                                onHorizontalDragDown: (details) =>
+                                    _pageDragStartX = details.globalPosition.dx,
+                                onHorizontalDragUpdate: (details) => setState(
+                                  () => _pageDragDistance =
+                                      (_pageDragStartX == null
+                                              ? _pageDragDistance +
+                                                    details.delta.dx
+                                              : details.globalPosition.dx -
+                                                    _pageDragStartX!)
+                                          .clamp(-size.width, size.width),
+                                ),
+                                onHorizontalDragCancel: () => setState(() {
+                                  _pageDragDistance = 0;
+                                  _pageDragStartX = null;
+                                }),
                                 onHorizontalDragEnd: (details) {
-                                  final velocity = details.primaryVelocity ?? 0;
-                                  if (velocity.abs() > 80) turn(velocity < 0);
+                                  final outcome = const PageTurnPolicy()
+                                      .resolve(
+                                        dragDistance: _pageDragDistance,
+                                        horizontalVelocity:
+                                            details.primaryVelocity ?? 0,
+                                        viewportWidth: size.width,
+                                      );
+                                  if (outcome == PageTurnOutcome.next) {
+                                    turn(true);
+                                  } else if (outcome ==
+                                      PageTurnOutcome.previous) {
+                                    turn(false);
+                                  } else {
+                                    setState(() => _pageDragDistance = 0);
+                                  }
+                                  _pageDragStartX = null;
                                 },
                                 onTapUp: (details) {
                                   final x =
@@ -1490,17 +1593,37 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
                                     });
                                   }
                                 },
-                                child: Align(
-                                  alignment: Alignment.topLeft,
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 240),
-                                    transitionBuilder: _pageTransition,
-                                    child: Text(
-                                      _page!.text,
-                                      key: ValueKey(_offset),
-                                      textAlign: TextAlign.justify,
-                                      textScaler: scaler,
-                                      style: style,
+                                child: Transform.translate(
+                                  offset: _turnMode == ReaderTurnMode.slide
+                                      ? Offset(_pageDragDistance, 0)
+                                      : Offset.zero,
+                                  child: CustomPaint(
+                                    foregroundPainter:
+                                        _turnMode == ReaderTurnMode.curl
+                                        ? _ReaderCurlPainter(
+                                            progress:
+                                                (_pageDragDistance.abs() /
+                                                        size.width)
+                                                    .clamp(0, .96),
+                                            fromRight: _pageDragDistance <= 0,
+                                            paper: _papers[_theme],
+                                          )
+                                        : null,
+                                    child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 240,
+                                        ),
+                                        transitionBuilder: _pageTransition,
+                                        child: Text(
+                                          _page!.text,
+                                          key: ValueKey(_offset),
+                                          textAlign: TextAlign.justify,
+                                          textScaler: scaler,
+                                          style: style,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1568,4 +1691,62 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
             ),
     );
   }
+}
+
+class _ReaderCurlPainter extends CustomPainter {
+  const _ReaderCurlPainter({
+    required this.progress,
+    required this.fromRight,
+    required this.paper,
+  });
+
+  final double progress;
+  final bool fromRight;
+  final Color paper;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+    final foldWidth = size.width * progress;
+    final edge = fromRight ? size.width - foldWidth : foldWidth;
+    final fold = Path()
+      ..moveTo(edge, 0)
+      ..quadraticBezierTo(
+        fromRight ? size.width + foldWidth * .14 : -foldWidth * .14,
+        size.height * .48,
+        edge,
+        size.height,
+      )
+      ..lineTo(fromRight ? size.width : 0, size.height)
+      ..lineTo(fromRight ? size.width : 0, 0)
+      ..close();
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawPath(
+      fold,
+      Paint()
+        ..shader = LinearGradient(
+          begin: fromRight ? Alignment.centerLeft : Alignment.centerRight,
+          end: fromRight ? Alignment.centerRight : Alignment.centerLeft,
+          colors: [
+            Colors.black.withValues(alpha: .24),
+            Color.lerp(paper, Colors.white, .18)!,
+          ],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.drawPath(
+      fold,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.black.withValues(alpha: .18),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReaderCurlPainter oldDelegate) =>
+      progress != oldDelegate.progress ||
+      fromRight != oldDelegate.fromRight ||
+      paper != oldDelegate.paper;
 }

@@ -371,6 +371,30 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   successfully (235,061,459 bytes, SHA-256
   `2E238A69AB947F5819A23660B8B2933338DA6341A2BB5A8BD933AD8602FC34E0`).
 
+## Production page-turn correction — 1.0.0+12 (2026-09-14)
+
+- Corrected the production reader rather than the earlier isolated interaction
+  spike. Slide/fade/curl modes now commit from the shared distance-and-velocity
+  policy, so a deliberate slow drag works as well as a fling and a short drag
+  returns without changing the anchor.
+- Slide follows the finger horizontally. Curl paints a direction-aware page
+  fold while dragging and commits through the normal paginator. Fade keeps a
+  non-directional page transition. Continuous scroll now renders the complete
+  chapter in a vertically bouncing scroll view instead of disguising a
+  vertical page animation as scrolling.
+- Entering continuous scroll restores the approximate persisted text anchor;
+  scroll completion maps its extent back to a text anchor and persists it.
+  Switching back to a paged mode resumes pagination from that anchor.
+- Widget regression now exercises real vertical movement in continuous mode,
+  a slow below-fling-speed curl drag that crosses the distance threshold, and
+  the production mode-specific surfaces. Native iOS gesture feel and frame
+  timing remain device-verification items.
+- Windows verification: `flutter analyze --no-pub` completed without
+  diagnostics, all 193 tests passed with native JavaScript tests enabled, and
+  the 1.0.0+12 Android debug APK built successfully (196,534,002 bytes,
+  SHA-256
+  `7976030EC8CB111CF67E0623F7836EA95527EEA5731583A1F817B682D30B8512`).
+
 ## Open-source source workflow adaptation — 1.0.0+8 (2026-09-14)
 
 - With explicit user approval, the project adopts AGPL-3.0-only and records

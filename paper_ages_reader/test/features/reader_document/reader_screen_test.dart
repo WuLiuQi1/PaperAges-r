@@ -252,6 +252,69 @@ void main() {
       );
       expect(await repository.readPreference('readerTurnMode'), 'fade');
       expect(await repository.readPreference('readerPaperTheme'), '1');
+      expect(find.byKey(const Key('reader-paged-surface')), findsOneWidget);
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('主题与设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('淡入'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('滚动'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      final continuous = find.byKey(
+        const Key('reader-continuous-scroll-surface'),
+      );
+      expect(continuous, findsOneWidget);
+      final scrollable = find.descendant(
+        of: continuous,
+        matching: find.byType(Scrollable),
+      );
+      final beforeScroll = tester
+          .state<ScrollableState>(scrollable)
+          .position
+          .pixels;
+      await tester.drag(continuous, const Offset(0, -260));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state<ScrollableState>(scrollable).position.pixels,
+        greaterThan(beforeScroll),
+      );
+      await tester.tap(find.byTooltip('阅读菜单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('主题与设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('滚动'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('翻页'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+      final curlSurface = find.byKey(const Key('reader-curl-surface'));
+      expect(curlSurface, findsOneWidget);
+      String curlText() => tester
+          .widgetList<Text>(
+            find.descendant(of: curlSurface, matching: find.byType(Text)),
+          )
+          .map((text) => text.data ?? '')
+          .join();
+      final beforeCurl = curlText();
+      final curlGesture = await tester.startGesture(
+        tester.getCenter(curlSurface),
+      );
+      await curlGesture.moveBy(
+        const Offset(-60, 0),
+        timeStamp: const Duration(milliseconds: 600),
+      );
+      await curlGesture.moveBy(
+        const Offset(-60, 0),
+        timeStamp: const Duration(milliseconds: 1200),
+      );
+      await tester.pump();
+      await curlGesture.up();
+      await tester.pumpAndSettle();
+      expect(curlText(), isNot(beforeCurl));
       expect(find.textContaining('目录 ·'), findsNothing);
       await tester.tap(find.byTooltip('阅读菜单'));
       await tester.pumpAndSettle();
