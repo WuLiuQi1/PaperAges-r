@@ -738,6 +738,62 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     return (current: current, total: total, remaining: total - current);
   }
 
+  ({String title, int start, int end}) _chapterRange(
+    ViewportPaginator paginator,
+    int chapterIndex,
+    int anchor,
+  ) {
+    if (widget.chapters.isNotEmpty && widget.loadChapter != null) {
+      final safeIndex = chapterIndex.clamp(0, widget.chapters.length - 1);
+      return (
+        title: widget.chapters[safeIndex].title,
+        start: 0,
+        end: paginator.text.length,
+      );
+    }
+    final chapters = _chapters();
+    var selected = 0;
+    for (var index = 1; index < chapters.length; index++) {
+      if (chapters[index].offset > anchor) break;
+      selected = index;
+    }
+    return (
+      title: chapters[selected].title,
+      start: chapters[selected].offset,
+      end: selected + 1 < chapters.length
+          ? chapters[selected + 1].offset
+          : paginator.text.length,
+    );
+  }
+
+  ({String title, int current, int total}) _pageFrameInfo({
+    required TextPage page,
+    required int chapterIndex,
+    required ViewportPaginator paginator,
+    required Size viewport,
+    required TextStyle style,
+    required TextScaler scaler,
+  }) {
+    final chapter = _chapterRange(paginator, chapterIndex, page.start);
+    var cursor = chapter.start;
+    var total = 0;
+    var current = 1;
+    while (cursor < chapter.end) {
+      final candidate = paginator.page(cursor, viewport, style, scaler);
+      total++;
+      if (page.start >= candidate.start && page.start < candidate.end) {
+        current = total;
+      }
+      final next = candidate.end.clamp(cursor + 1, chapter.end);
+      cursor = next;
+    }
+    return (
+      title: chapter.title,
+      current: current.clamp(1, total == 0 ? 1 : total),
+      total: total == 0 ? 1 : total,
+    );
+  }
+
   void _jumpTo(int offset) {
     setState(() {
       _offset = offset.clamp(0, _paginator!.text.length);
@@ -1566,19 +1622,73 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     );
   }
 
-  Widget _textLeaf(TextPage page, TextStyle style, TextScaler scaler) =>
-      ColoredBox(
-        color: _papers[_theme],
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Text(
-            page.text,
-            textAlign: TextAlign.justify,
-            textScaler: scaler,
-            style: style,
+  Widget _textLeaf({
+    required TextPage page,
+    required int chapterIndex,
+    required ViewportPaginator paginator,
+    required Size viewport,
+    required TextStyle style,
+    required TextScaler scaler,
+  }) {
+    final darkPaper = _theme == 1 || _theme == 5;
+    final info = _pageFrameInfo(
+      page: page,
+      chapterIndex: chapterIndex,
+      paginator: paginator,
+      viewport: viewport,
+      style: style,
+      scaler: scaler,
+    );
+    final metadataColor = darkPaper ? Colors.white54 : Colors.black45;
+    return ColoredBox(
+      color: _papers[_theme],
+      child: Column(
+        children: [
+          SizedBox(
+            height: 64,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 72),
+                child: Text(
+                  info.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: metadataColor,
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      );
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(32, 14, 32, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: Text(
+                  page.text,
+                  textAlign: TextAlign.justify,
+                  textScaler: scaler,
+                  style: style,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 64,
+            child: Center(
+              child: Text(
+                '${info.current}/${info.total}',
+                style: TextStyle(fontSize: 12, color: metadataColor),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   ReaderPageSnapshot _pageSnapshot({
     required TextPage page,
@@ -1586,21 +1696,32 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
     required Size viewport,
     required TextStyle style,
     required TextScaler scaler,
-  }) => ReaderPageSnapshot(
-    key: ReaderPageSnapshotKey(
-      pageIdentity: '${widget.book.id}:$chapterIndex:${page.start}',
-      layoutFingerprint:
-          '${viewport.width}x${viewport.height}:$_fontSize:$_lineHeight:${_fontFamily ?? 'system'}',
-      themeId: '$_theme',
-    ),
-    contentRevision: Object.hash(
-      widget.book.fingerprint,
-      chapterIndex,
-      page.start,
-      page.end,
-    ),
-    child: _textLeaf(page, style, scaler),
-  );
+    ViewportPaginator? paginator,
+  }) {
+    final pagePaginator = paginator ?? _paginator!;
+    return ReaderPageSnapshot(
+      key: ReaderPageSnapshotKey(
+        pageIdentity: '${widget.book.id}:$chapterIndex:${page.start}',
+        layoutFingerprint:
+            '${viewport.width}x${viewport.height}:$_fontSize:$_lineHeight:${_fontFamily ?? 'system'}',
+        themeId: '$_theme',
+      ),
+      contentRevision: Object.hash(
+        widget.book.fingerprint,
+        chapterIndex,
+        page.start,
+        page.end,
+      ),
+      child: _textLeaf(
+        page: page,
+        chapterIndex: chapterIndex,
+        paginator: pagePaginator,
+        viewport: viewport,
+        style: style,
+        scaler: scaler,
+      ),
+    );
+  }
 
   ReaderPageSnapshot? _adjacentChapterSnapshot({
     required int chapterIndex,
@@ -1621,6 +1742,7 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
       viewport: viewport,
       style: style,
       scaler: scaler,
+      paginator: paginator,
     );
   }
 
@@ -1677,406 +1799,334 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
           : SafeArea(
               child: Stack(
                 children: [
-                  Column(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        height: 64,
-                        child: AnimatedOpacity(
-                          opacity: _chromeVisible ? 1 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          child: IgnorePointer(
-                            ignoring: !_chromeVisible,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 72,
-                                  ),
-                                  child: Text(
-                                    _pageMetrics().remaining > 0
-                                        ? '本章还剩 ${_pageMetrics().remaining} 页'
-                                        : widget.book.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: darkPaper
-                                          ? Colors.white54
-                                          : Colors.black45,
-                                    ),
-                                  ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final size = constraints.biggest;
+                      final pageViewport = Size(
+                        size.width > 64 ? size.width - 64 : 1,
+                        size.height > 150 ? size.height - 150 : 1,
+                      );
+                      final scaler = MediaQuery.textScalerOf(context);
+                      final style = TextStyle(
+                        fontFamily:
+                            _fontFamily ??
+                            Theme.of(context).textTheme.bodyMedium?.fontFamily,
+                        fontSize: _fontSize,
+                        height: _lineHeight,
+                        fontWeight: _theme == 3
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: darkPaper
+                            ? const Color(0xFFECECEC)
+                            : const Color(0xFF222222),
+                      );
+                      if (_turnMode == ReaderTurnMode.scroll) {
+                        return _continuousScrollSurface(style, scaler);
+                      }
+                      _page = _paginator!.page(
+                        _offset,
+                        pageViewport,
+                        style,
+                        scaler,
+                      );
+                      Future<void> turn(bool forward) async {
+                        final page = _page!;
+                        if (forward && page.end >= _paginator!.text.length) {
+                          if (_activeChapterIndex + 1 <
+                              widget.chapters.length) {
+                            await _selectChapter(_activeChapterIndex + 1);
+                          }
+                          return;
+                        }
+                        if (!forward && _offset == 0) {
+                          if (_activeChapterIndex > 0) {
+                            await _selectChapter(
+                              _activeChapterIndex - 1,
+                              openAtEnd: true,
+                              viewport: pageViewport,
+                              style: style,
+                              scaler: scaler,
+                            );
+                          }
+                          return;
+                        }
+                        setState(() {
+                          _turnDirection = forward ? 1 : -1;
+                          _pageDragDistance = 0;
+                          if (forward) {
+                            _history.add(_offset);
+                            _offset = page.end;
+                          } else {
+                            _offset = _history.isNotEmpty
+                                ? _history.removeLast()
+                                : _paginator!
+                                      .previous(
+                                        _offset,
+                                        pageViewport,
+                                        style,
+                                        scaler,
+                                      )
+                                      .start;
+                          }
+                          _menu = false;
+                          _chromeVisible = true;
+                        });
+                        unawaited(_savePage(_offset));
+                      }
+
+                      if (_turnMode == ReaderTurnMode.curl) {
+                        final current = _pageSnapshot(
+                          page: _page!,
+                          chapterIndex: _activeChapterIndex,
+                          viewport: pageViewport,
+                          style: style,
+                          scaler: scaler,
+                        );
+                        final next = _page!.end < _paginator!.text.length
+                            ? _pageSnapshot(
+                                page: _paginator!.page(
+                                  _page!.end,
+                                  pageViewport,
+                                  style,
+                                  scaler,
                                 ),
-                                Positioned(
-                                  right: 16,
-                                  child: _roundButton(
-                                    Icons.close,
-                                    () => Navigator.of(context).pop(),
-                                    tooltip: '关闭图书',
-                                  ),
+                                chapterIndex: _activeChapterIndex,
+                                viewport: pageViewport,
+                                style: style,
+                                scaler: scaler,
+                              )
+                            : (_adjacentChapterSnapshot(
+                                    chapterIndex: _activeChapterIndex + 1,
+                                    lastPage: false,
+                                    viewport: pageViewport,
+                                    style: style,
+                                    scaler: scaler,
+                                  ) ??
+                                  _chapterBoundarySnapshot(
+                                    chapterIndex: _activeChapterIndex + 1,
+                                    forward: true,
+                                  ));
+                        final previous = _offset > 0
+                            ? _pageSnapshot(
+                                page: _paginator!.previous(
+                                  _offset,
+                                  pageViewport,
+                                  style,
+                                  scaler,
                                 ),
-                              ],
+                                chapterIndex: _activeChapterIndex,
+                                viewport: pageViewport,
+                                style: style,
+                                scaler: scaler,
+                              )
+                            : (_adjacentChapterSnapshot(
+                                    chapterIndex: _activeChapterIndex - 1,
+                                    lastPage: true,
+                                    viewport: pageViewport,
+                                    style: style,
+                                    scaler: scaler,
+                                  ) ??
+                                  _chapterBoundarySnapshot(
+                                    chapterIndex: _activeChapterIndex - 1,
+                                    forward: false,
+                                  ));
+                        return GestureDetector(
+                          key: const Key('reader-curl-surface'),
+                          behavior: HitTestBehavior.translucent,
+                          onTapUp: (details) {
+                            final x = details.localPosition.dx / size.width;
+                            if (x < .25) {
+                              unawaited(_curlController.turnBackward());
+                            } else if (x > .75) {
+                              unawaited(_curlController.turnForward());
+                            } else {
+                              setState(() {
+                                _chromeVisible = !_chromeVisible;
+                                _menu = false;
+                              });
+                            }
+                          },
+                          child: ReaderShaderPageCurl(
+                            controller: _curlController,
+                            currentPage: current,
+                            forwardPage: next,
+                            backwardPage: previous,
+                            paperColor: _papers[_theme],
+                            onTurnForward: () => turn(true),
+                            onTurnBackward: () => turn(false),
+                          ),
+                        );
+                      }
+
+                      if (_turnMode == ReaderTurnMode.slide) {
+                        final current = _pageSnapshot(
+                          page: _page!,
+                          chapterIndex: _activeChapterIndex,
+                          viewport: pageViewport,
+                          style: style,
+                          scaler: scaler,
+                        );
+                        final next = _page!.end < _paginator!.text.length
+                            ? _pageSnapshot(
+                                page: _paginator!.page(
+                                  _page!.end,
+                                  pageViewport,
+                                  style,
+                                  scaler,
+                                ),
+                                chapterIndex: _activeChapterIndex,
+                                viewport: pageViewport,
+                                style: style,
+                                scaler: scaler,
+                              )
+                            : (_adjacentChapterSnapshot(
+                                    chapterIndex: _activeChapterIndex + 1,
+                                    lastPage: false,
+                                    viewport: pageViewport,
+                                    style: style,
+                                    scaler: scaler,
+                                  ) ??
+                                  _chapterBoundarySnapshot(
+                                    chapterIndex: _activeChapterIndex + 1,
+                                    forward: true,
+                                  ));
+                        final previous = _offset > 0
+                            ? _pageSnapshot(
+                                page: _paginator!.previous(
+                                  _offset,
+                                  pageViewport,
+                                  style,
+                                  scaler,
+                                ),
+                                chapterIndex: _activeChapterIndex,
+                                viewport: pageViewport,
+                                style: style,
+                                scaler: scaler,
+                              )
+                            : (_adjacentChapterSnapshot(
+                                    chapterIndex: _activeChapterIndex - 1,
+                                    lastPage: true,
+                                    viewport: pageViewport,
+                                    style: style,
+                                    scaler: scaler,
+                                  ) ??
+                                  _chapterBoundarySnapshot(
+                                    chapterIndex: _activeChapterIndex - 1,
+                                    forward: false,
+                                  ));
+                        return _ReaderSlidePager(
+                          key: const Key('reader-paged-surface'),
+                          current: current,
+                          next: next,
+                          previous: previous,
+                          onNext: () => turn(true),
+                          onPrevious: () => turn(false),
+                          onCenterTap: () => setState(() {
+                            _chromeVisible = !_chromeVisible;
+                            _menu = false;
+                          }),
+                        );
+                      }
+
+                      return GestureDetector(
+                        key: Key('reader-paged-surface'),
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragDown: (details) =>
+                            _pageDragStartX = details.globalPosition.dx,
+                        onHorizontalDragUpdate: (details) => setState(
+                          () => _pageDragDistance =
+                              (_pageDragStartX == null
+                                      ? _pageDragDistance + details.delta.dx
+                                      : details.globalPosition.dx -
+                                            _pageDragStartX!)
+                                  .clamp(-size.width, size.width),
+                        ),
+                        onHorizontalDragCancel: () => setState(() {
+                          _pageDragDistance = 0;
+                          _pageDragStartX = null;
+                        }),
+                        onHorizontalDragEnd: (details) {
+                          final outcome = const PageTurnPolicy().resolve(
+                            dragDistance: _pageDragDistance,
+                            horizontalVelocity: details.primaryVelocity ?? 0,
+                            viewportWidth: size.width,
+                          );
+                          if (outcome == PageTurnOutcome.next) {
+                            unawaited(turn(true));
+                          } else if (outcome == PageTurnOutcome.previous) {
+                            unawaited(turn(false));
+                          } else {
+                            setState(() => _pageDragDistance = 0);
+                          }
+                          _pageDragStartX = null;
+                        },
+                        onTapUp: (details) {
+                          final x = details.localPosition.dx / size.width;
+                          if (x < .25) {
+                            unawaited(turn(false));
+                          } else if (x > .75) {
+                            unawaited(turn(true));
+                          } else {
+                            setState(() {
+                              _chromeVisible = !_chromeVisible;
+                              _menu = false;
+                            });
+                          }
+                        },
+                        child: Transform.translate(
+                          offset: _turnMode == ReaderTurnMode.slide
+                              ? Offset(_pageDragDistance, 0)
+                              : Offset.zero,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 240),
+                            transitionBuilder: _pageTransition,
+                            child: KeyedSubtree(
+                              key: ValueKey(_offset),
+                              child: _textLeaf(
+                                page: _page!,
+                                chapterIndex: _activeChapterIndex,
+                                paginator: _paginator!,
+                                viewport: pageViewport,
+                                style: style,
+                                scaler: scaler,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(32, 14, 32, 8),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final size = constraints.biggest;
-                              final scaler = MediaQuery.textScalerOf(context);
-                              final style = TextStyle(
-                                fontFamily:
-                                    _fontFamily ??
-                                    Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.fontFamily,
-                                fontSize: _fontSize,
-                                height: _lineHeight,
-                                fontWeight: _theme == 3
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: darkPaper
-                                    ? const Color(0xFFECECEC)
-                                    : const Color(0xFF222222),
-                              );
-                              if (_turnMode == ReaderTurnMode.scroll) {
-                                return _continuousScrollSurface(style, scaler);
-                              }
-                              _page = _paginator!.page(
-                                _offset,
-                                size,
-                                style,
-                                scaler,
-                              );
-                              Future<void> turn(bool forward) async {
-                                final page = _page!;
-                                if (forward &&
-                                    page.end >= _paginator!.text.length) {
-                                  if (_activeChapterIndex + 1 <
-                                      widget.chapters.length) {
-                                    await _selectChapter(
-                                      _activeChapterIndex + 1,
-                                    );
-                                  }
-                                  return;
-                                }
-                                if (!forward && _offset == 0) {
-                                  if (_activeChapterIndex > 0) {
-                                    await _selectChapter(
-                                      _activeChapterIndex - 1,
-                                      openAtEnd: true,
-                                      viewport: size,
-                                      style: style,
-                                      scaler: scaler,
-                                    );
-                                  }
-                                  return;
-                                }
-                                setState(() {
-                                  _turnDirection = forward ? 1 : -1;
-                                  _pageDragDistance = 0;
-                                  if (forward) {
-                                    _history.add(_offset);
-                                    _offset = page.end;
-                                  } else {
-                                    _offset = _history.isNotEmpty
-                                        ? _history.removeLast()
-                                        : _paginator!
-                                              .previous(
-                                                _offset,
-                                                size,
-                                                style,
-                                                scaler,
-                                              )
-                                              .start;
-                                  }
-                                  _menu = false;
-                                  _chromeVisible = true;
-                                });
-                                unawaited(_savePage(_offset));
-                              }
-
-                              if (_turnMode == ReaderTurnMode.curl) {
-                                final current = _pageSnapshot(
-                                  page: _page!,
-                                  chapterIndex: _activeChapterIndex,
-                                  viewport: size,
-                                  style: style,
-                                  scaler: scaler,
-                                );
-                                final next =
-                                    _page!.end < _paginator!.text.length
-                                    ? _pageSnapshot(
-                                        page: _paginator!.page(
-                                          _page!.end,
-                                          size,
-                                          style,
-                                          scaler,
-                                        ),
-                                        chapterIndex: _activeChapterIndex,
-                                        viewport: size,
-                                        style: style,
-                                        scaler: scaler,
-                                      )
-                                    : (_adjacentChapterSnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex + 1,
-                                            lastPage: false,
-                                            viewport: size,
-                                            style: style,
-                                            scaler: scaler,
-                                          ) ??
-                                          _chapterBoundarySnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex + 1,
-                                            forward: true,
-                                          ));
-                                final previous = _offset > 0
-                                    ? _pageSnapshot(
-                                        page: _paginator!.previous(
-                                          _offset,
-                                          size,
-                                          style,
-                                          scaler,
-                                        ),
-                                        chapterIndex: _activeChapterIndex,
-                                        viewport: size,
-                                        style: style,
-                                        scaler: scaler,
-                                      )
-                                    : (_adjacentChapterSnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex - 1,
-                                            lastPage: true,
-                                            viewport: size,
-                                            style: style,
-                                            scaler: scaler,
-                                          ) ??
-                                          _chapterBoundarySnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex - 1,
-                                            forward: false,
-                                          ));
-                                return GestureDetector(
-                                  key: const Key('reader-curl-surface'),
-                                  behavior: HitTestBehavior.translucent,
-                                  onTapUp: (details) {
-                                    final x =
-                                        details.localPosition.dx / size.width;
-                                    if (x < .25) {
-                                      unawaited(_curlController.turnBackward());
-                                    } else if (x > .75) {
-                                      unawaited(_curlController.turnForward());
-                                    } else {
-                                      setState(() {
-                                        _chromeVisible = !_chromeVisible;
-                                        _menu = false;
-                                      });
-                                    }
-                                  },
-                                  child: ReaderShaderPageCurl(
-                                    controller: _curlController,
-                                    currentPage: current,
-                                    forwardPage: next,
-                                    backwardPage: previous,
-                                    paperColor: _papers[_theme],
-                                    onTurnForward: () => turn(true),
-                                    onTurnBackward: () => turn(false),
-                                  ),
-                                );
-                              }
-
-                              if (_turnMode == ReaderTurnMode.slide) {
-                                final current = _pageSnapshot(
-                                  page: _page!,
-                                  chapterIndex: _activeChapterIndex,
-                                  viewport: size,
-                                  style: style,
-                                  scaler: scaler,
-                                );
-                                final next =
-                                    _page!.end < _paginator!.text.length
-                                    ? _pageSnapshot(
-                                        page: _paginator!.page(
-                                          _page!.end,
-                                          size,
-                                          style,
-                                          scaler,
-                                        ),
-                                        chapterIndex: _activeChapterIndex,
-                                        viewport: size,
-                                        style: style,
-                                        scaler: scaler,
-                                      )
-                                    : (_adjacentChapterSnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex + 1,
-                                            lastPage: false,
-                                            viewport: size,
-                                            style: style,
-                                            scaler: scaler,
-                                          ) ??
-                                          _chapterBoundarySnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex + 1,
-                                            forward: true,
-                                          ));
-                                final previous = _offset > 0
-                                    ? _pageSnapshot(
-                                        page: _paginator!.previous(
-                                          _offset,
-                                          size,
-                                          style,
-                                          scaler,
-                                        ),
-                                        chapterIndex: _activeChapterIndex,
-                                        viewport: size,
-                                        style: style,
-                                        scaler: scaler,
-                                      )
-                                    : (_adjacentChapterSnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex - 1,
-                                            lastPage: true,
-                                            viewport: size,
-                                            style: style,
-                                            scaler: scaler,
-                                          ) ??
-                                          _chapterBoundarySnapshot(
-                                            chapterIndex:
-                                                _activeChapterIndex - 1,
-                                            forward: false,
-                                          ));
-                                return _ReaderSlidePager(
-                                  key: const Key('reader-paged-surface'),
-                                  current: current,
-                                  next: next,
-                                  previous: previous,
-                                  onNext: () => turn(true),
-                                  onPrevious: () => turn(false),
-                                  onCenterTap: () => setState(() {
-                                    _chromeVisible = !_chromeVisible;
-                                    _menu = false;
-                                  }),
-                                );
-                              }
-
-                              return GestureDetector(
-                                key: Key('reader-paged-surface'),
-                                behavior: HitTestBehavior.opaque,
-                                onHorizontalDragDown: (details) =>
-                                    _pageDragStartX = details.globalPosition.dx,
-                                onHorizontalDragUpdate: (details) => setState(
-                                  () => _pageDragDistance =
-                                      (_pageDragStartX == null
-                                              ? _pageDragDistance +
-                                                    details.delta.dx
-                                              : details.globalPosition.dx -
-                                                    _pageDragStartX!)
-                                          .clamp(-size.width, size.width),
-                                ),
-                                onHorizontalDragCancel: () => setState(() {
-                                  _pageDragDistance = 0;
-                                  _pageDragStartX = null;
-                                }),
-                                onHorizontalDragEnd: (details) {
-                                  final outcome = const PageTurnPolicy()
-                                      .resolve(
-                                        dragDistance: _pageDragDistance,
-                                        horizontalVelocity:
-                                            details.primaryVelocity ?? 0,
-                                        viewportWidth: size.width,
-                                      );
-                                  if (outcome == PageTurnOutcome.next) {
-                                    unawaited(turn(true));
-                                  } else if (outcome ==
-                                      PageTurnOutcome.previous) {
-                                    unawaited(turn(false));
-                                  } else {
-                                    setState(() => _pageDragDistance = 0);
-                                  }
-                                  _pageDragStartX = null;
-                                },
-                                onTapUp: (details) {
-                                  final x =
-                                      details.localPosition.dx / size.width;
-                                  if (x < .25) {
-                                    unawaited(turn(false));
-                                  } else if (x > .75) {
-                                    unawaited(turn(true));
-                                  } else {
-                                    setState(() {
-                                      _chromeVisible = !_chromeVisible;
-                                      _menu = false;
-                                    });
-                                  }
-                                },
-                                child: Transform.translate(
-                                  offset: _turnMode == ReaderTurnMode.slide
-                                      ? Offset(_pageDragDistance, 0)
-                                      : Offset.zero,
-                                  child: Align(
-                                    alignment: Alignment.topLeft,
-                                    child: AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 240,
-                                      ),
-                                      transitionBuilder: _pageTransition,
-                                      child: Text(
-                                        _page!.text,
-                                        key: ValueKey(_offset),
-                                        textAlign: TextAlign.justify,
-                                        textScaler: scaler,
-                                        style: style,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                      );
+                    },
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 16,
+                    child: AnimatedOpacity(
+                      opacity: _chromeVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: IgnorePointer(
+                        ignoring: !_chromeVisible,
+                        child: _roundButton(
+                          Icons.close,
+                          () => Navigator.of(context).pop(),
+                          tooltip: '关闭图书',
                         ),
                       ),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 64,
-                        child: AnimatedOpacity(
-                          opacity: _chromeVisible ? 1 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          child: IgnorePointer(
-                            ignoring: !_chromeVisible,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Text(
-                                  _paginator!.text.isEmpty
-                                      ? '空白文档'
-                                      : '${_pageMetrics().current}/约${_pageMetrics().total}页',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 16,
-                                  child: _roundButton(
-                                    Icons.toc_rounded,
-                                    () => setState(() => _menu = !_menu),
-                                    tooltip: '阅读菜单',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 16,
+                    bottom: 8,
+                    child: AnimatedOpacity(
+                      opacity: _chromeVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: IgnorePointer(
+                        ignoring: !_chromeVisible,
+                        child: _roundButton(
+                          Icons.toc_rounded,
+                          () => setState(() => _menu = !_menu),
+                          tooltip: '阅读菜单',
                         ),
                       ),
-                    ],
+                    ),
                   ),
                   if (_menu)
                     Positioned(

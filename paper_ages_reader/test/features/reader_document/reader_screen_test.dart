@@ -90,7 +90,7 @@ void main() {
     expect(find.byTooltip('分享'), findsNothing);
     await tester.tap(find.textContaining('目录 ·'));
     await tester.pumpAndSettle();
-    expect(find.text('第一章'), findsOneWidget);
+    expect(find.text('第一章'), findsWidgets);
     expect(find.text('第二章'), findsOneWidget);
     await tester.tap(find.text('第二章'));
     await tester.pumpAndSettle();
@@ -174,6 +174,20 @@ void main() {
       expect(find.byType(AppBar), findsNothing);
       expect(find.textContaining('这是第0段'), findsOneWidget);
       expect(find.textContaining('这是第1段'), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('reader-paged-surface'))),
+        const Size(390, 844),
+      );
+      expect(find.text('正文'), findsWidgets);
+      expect(find.textContaining('约'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              RegExp(r'^\d+/\d+$').hasMatch(widget.data ?? ''),
+        ),
+        findsWidgets,
+      );
       expect(tester.takeException(), isNull);
       Future<void> capture(String name) async {
         if (!const bool.fromEnvironment('CAPTURE_UI')) return;
