@@ -126,6 +126,8 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
               )
             : NetworkChapterScreen(
                 source: source,
+                bookTitle: book.title,
+                bookId: bookId,
                 chapter: SourceChapter(
                   key: binding.chapterKey,
                   title: book.title,
@@ -141,6 +143,116 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
   void _show(String message) =>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
+
+  Future<String> _networkSourceName(
+    NetworkShelfBook book,
+    AppDatabase database,
+  ) async {
+    final bookId = NetworkShelfRepository.bookIdFor(
+      sourceUrl: book.sourceUrl,
+      locator: book.locator,
+    );
+    final binding = PersistentSourceBindingStore(database).bindingFor(bookId);
+    final source = await LocalSourceRepository(database)
+        .findByUrl(binding?.sourceUrl ?? book.sourceUrl);
+    return source?.name ?? Uri.tryParse(book.sourceUrl)?.host ?? '在线书源';
+  }
+
+  Future<bool> _confirmDelete(String title, {required bool localFile}) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(localFile ? '删除本地书籍？' : '移出书库？'),
+          content: Text(
+            localFile
+                ? '“$title”及其导入文件和阅读进度将从此设备删除。'
+                : '“$title”将从书库移除，已下载的章节缓存不会立即清除。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(localFile ? '删除' : '移出'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  Future<void> _deleteLocal(
+    LibraryBook book,
+    LocalLibraryRepository repository,
+  ) async {
+    if (!await _confirmDelete(book.title, localFile: true)) return;
+    try {
+      await repository.removeBook(book);
+      if (mounted) _show('已删除“${book.title}”');
+    } catch (error) {
+      if (mounted) _show('删除失败：$error');
+    }
+  }
+
+  Future<void> _deleteNetwork(
+    NetworkShelfBook book,
+    AppDatabase database,
+  ) async {
+    if (!await _confirmDelete(book.title, localFile: false)) return;
+    try {
+      await NetworkShelfRepository(database).remove(book);
+      if (mounted) _show('已将“${book.title}”移出书库');
+    } catch (error) {
+      if (mounted) _show('移出失败：$error');
+    }
+  }
+
+  Future<void> _showNetworkActions(
+    NetworkShelfBook book,
+    AppDatabase database,
+  ) => showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (sheetContext) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(book.title, maxLines: 2),
+            subtitle: FutureBuilder<String>(
+              future: _networkSourceName(book, database),
+              builder: (_, source) => Text(source.data ?? '在线书籍'),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('继续阅读'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _openNetworkBook(book, database);
+            },
+          ),
+          ListTile(
+            leading: Icon(
+              Icons.delete_outline_rounded,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            title: Text(
+              '移出书库',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _deleteNetwork(book, database);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -293,13 +405,40 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                         final book = networkBooks[index];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const SizedBox(
+                          leading: SizedBox(
                             width: 42,
-                            child: Icon(Icons.cloud_done_outlined, size: 34),
+                            child: FutureBuilder<String>(
+                              future: _networkSourceName(
+                                book,
+                                repository.database,
+                              ),
+                              builder: (_, source) => ShelfBookCover(
+                                title: book.title,
+                                identity: '${book.sourceUrl}|${book.locator}',
+                                badge: source.data ?? '在线',
+                              ),
+                            ),
                           ),
                           title: Text(book.title),
-                          subtitle: Text(book.author ?? '在线书籍'),
-                          trailing: const Icon(Icons.chevron_right),
+                          subtitle: FutureBuilder<String>(
+                            future: _networkSourceName(
+                              book,
+                              repository.database,
+                            ),
+                            builder: (_, source) => Text(
+                              [
+                                if (book.author?.isNotEmpty ?? false)
+                                  book.author!,
+                                source.data ?? '在线书籍',
+                              ].join(' · '),
+                            ),
+                          ),
+                          trailing: IconButton(
+                            tooltip: '${book.title}的更多操作',
+                            icon: const Icon(Icons.more_horiz),
+                            onPressed: () =>
+                                _showNetworkActions(book, repository.database),
+                          ),
                           onTap: () =>
                               _openNetworkBook(book, repository.database),
                         );
@@ -325,6 +464,7 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                             context,
                             book,
                             () => _openBook(book, repository),
+                            () => _deleteLocal(book, repository),
                           ),
                         ),
                         onTap: () => _openBook(book, repository),
@@ -332,57 +472,9 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                     },
                   );
                 }
+                final total = networkBooks.length + books.length;
                 return CustomScrollView(
                   slivers: [
-                    if (networkBooks.isNotEmpty) ...[
-                      const SliverPadding(
-                        padding: EdgeInsets.fromLTRB(32, 24, 32, 10),
-                        sliver: SliverToBoxAdapter(
-                          child: Text(
-                            '在线书籍',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 116,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            itemCount: networkBooks.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(width: 12),
-                            itemBuilder: (context, index) {
-                              final book = networkBooks[index];
-                              return SizedBox(
-                                width: 240,
-                                child: Card(
-                                  child: ListTile(
-                                    leading: const Icon(
-                                      Icons.cloud_done_outlined,
-                                    ),
-                                    title: Text(
-                                      book.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(book.author ?? '在线书籍'),
-                                    onTap: () => _openNetworkBook(
-                                      book,
-                                      repository.database,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
                       sliver: SliverGrid(
@@ -390,12 +482,71 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                           crossAxisCount: 2,
                           mainAxisExtent:
                               (MediaQuery.sizeOf(context).width - 90) / 1.4 +
-                              44,
+                              50,
                           crossAxisSpacing: 26,
                           mainAxisSpacing: 24,
                         ),
                         delegate: SliverChildBuilderDelegate((context, index) {
-                          final book = books[index];
+                          if (index < networkBooks.length) {
+                            final book = networkBooks[index];
+                            return FutureBuilder<String>(
+                              future: _networkSourceName(
+                                book,
+                                repository.database,
+                              ),
+                              builder: (context, source) => Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => _openNetworkBook(
+                                      book,
+                                      repository.database,
+                                    ),
+                                    onLongPress: () => _showNetworkActions(
+                                      book,
+                                      repository.database,
+                                    ),
+                                    child: ShelfBookCover(
+                                      title: book.title,
+                                      identity:
+                                          '${book.sourceUrl}|${book.locator}',
+                                      badge: source.data ?? '在线',
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          source.data ?? '在线书籍',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: '${book.title}的更多操作',
+                                        padding: EdgeInsets.zero,
+                                        icon: const Icon(
+                                          Icons.more_horiz,
+                                          size: 22,
+                                        ),
+                                        onPressed: () => _showNetworkActions(
+                                          book,
+                                          repository.database,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          final book = books[index - networkBooks.length];
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -405,6 +556,7 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                                   context,
                                   book,
                                   () => _openBook(book, repository),
+                                  () => _deleteLocal(book, repository),
                                 ),
                                 child: Semantics(
                                   button: true,
@@ -425,35 +577,32 @@ class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
                                       ),
                                     ),
                                   ),
-                                  SizedBox(
-                                    width: 44,
-                                    height: 36,
-                                    child: IconButton(
-                                      tooltip: '${book.title}的更多操作',
-                                      padding: EdgeInsets.zero,
-                                      icon: const Icon(
-                                        Icons.more_horiz,
-                                        size: 22,
-                                      ),
-                                      onPressed: () => showBookActions(
-                                        context,
-                                        book,
-                                        () => _openBook(book, repository),
-                                      ),
+                                  IconButton(
+                                    tooltip: '${book.title}的更多操作',
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(
+                                      Icons.more_horiz,
+                                      size: 22,
+                                    ),
+                                    onPressed: () => showBookActions(
+                                      context,
+                                      book,
+                                      () => _openBook(book, repository),
+                                      () => _deleteLocal(book, repository),
                                     ),
                                   ),
                                 ],
                               ),
                             ],
                           );
-                        }, childCount: books.length),
+                        }, childCount: total),
                       ),
                     ),
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(32, 38, 32, 130),
                         child: Text(
-                          '${books.length} 本书',
+                          '$total 本书',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 12,

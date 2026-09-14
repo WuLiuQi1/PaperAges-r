@@ -39,6 +39,57 @@ class _MemoryRepository extends LocalLibraryRepository {
 }
 
 void main() {
+  testWidgets('network text uses the shared reader and exposes source switch', (
+    tester,
+  ) async {
+    final folder = Directory.systemTemp.createTempSync('paper-network-reader-');
+    addTearDown(() => folder.deleteSync(recursive: true));
+    final db = await tester.runAsync(
+      () => AppDatabase.openFile(File('${folder.path}/state.json')),
+    );
+    final repository = _MemoryRepository(db!, '不应读取本地文件');
+    var switches = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderDocumentScreen(
+          book: LibraryBook(
+            id: 'network-book',
+            kind: LibraryBookKind.text,
+            title: '在线春秋',
+            filePath: '',
+            fingerprint: 'network-book',
+            createdAt: DateTime(2026),
+          ),
+          repository: repository,
+          loadText: () async => '这是在线章节正文。',
+          normalize: (text) async => const TextNormalizer().normalize(text),
+          onChangeSource: (_) async {
+            switches += 1;
+            return false;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('这是在线章节正文'), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+    await tester.tap(find.byTooltip('阅读菜单'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('换源'), findsOneWidget);
+    expect(find.byTooltip('分享'), findsNothing);
+    await tester.tap(find.byTooltip('换源'));
+    await tester.pumpAndSettle();
+    expect(switches, 1);
+    await tester.runAsync(() async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+  });
+
   testWidgets(
     'reader flows paragraphs, turns, and opens theme panel without AppBar',
     (tester) async {

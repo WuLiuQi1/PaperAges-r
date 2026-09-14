@@ -7,6 +7,27 @@ import '../domain/library_book.dart';
 class BookCover extends StatelessWidget {
   const BookCover({super.key, required this.book});
   final LibraryBook book;
+
+  @override
+  Widget build(BuildContext context) => ShelfBookCover(
+    title: book.title,
+    identity: book.fingerprint,
+    badge: book.kind == LibraryBookKind.pdf ? 'PDF' : 'TXT',
+  );
+}
+
+class ShelfBookCover extends StatelessWidget {
+  const ShelfBookCover({
+    super.key,
+    required this.title,
+    required this.identity,
+    required this.badge,
+  });
+
+  final String title;
+  final String identity;
+  final String badge;
+
   Color get color {
     const palette = [
       Color(0xFF254D5D),
@@ -14,7 +35,7 @@ class BookCover extends StatelessWidget {
       Color(0xFF596547),
       Color(0xFF484B69),
     ];
-    return palette[book.fingerprint.codeUnits.fold<int>(0, (a, b) => a + b) %
+    return palette[identity.codeUnits.fold<int>(0, (a, b) => a + b) %
         palette.length];
   }
 
@@ -60,7 +81,7 @@ class BookCover extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        book.title,
+                        title,
                         maxLines: 5,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -73,11 +94,13 @@ class BookCover extends StatelessWidget {
                     ),
                     if (constraints.maxHeight > 90)
                       Text(
-                        book.kind == LibraryBookKind.pdf ? 'PDF' : 'TXT',
+                        badge,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white60,
                           fontSize: 10,
-                          letterSpacing: 3,
+                          letterSpacing: .3,
                         ),
                       ),
                   ],
@@ -94,8 +117,9 @@ class BookCover extends StatelessWidget {
 Future<void> showBookActions(
   BuildContext context,
   LibraryBook book,
-  VoidCallback onRead,
-) => showModalBottomSheet<void>(
+  VoidCallback onRead, [
+  Future<void> Function()? onDelete,
+]) => showModalBottomSheet<void>(
   context: context,
   showDragHandle: false,
   useSafeArea: true,
@@ -142,6 +166,27 @@ Future<void> showBookActions(
               onRead();
             },
           ),
+          if (onDelete != null) ...[
+            const SizedBox(height: 10),
+            ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              tileColor: Theme.of(context).colorScheme.surface,
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                '删除此书',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                await onDelete();
+              },
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             book.kind == LibraryBookKind.pdf ? 'PDF · 本地导入' : 'TXT · 本地导入',

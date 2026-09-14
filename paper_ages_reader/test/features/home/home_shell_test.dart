@@ -144,7 +144,7 @@ void main() {
       await tester.tap(find.byTooltip('列表视图'));
       await tester.pumpAndSettle();
       expect(find.byType(ListTile), findsNWidgets(3));
-      expect(find.text('云端春秋'), findsOneWidget);
+      expect(find.text('云端春秋'), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('网格视图'));
       await tester.pumpAndSettle();
@@ -156,11 +156,11 @@ void main() {
       await tester.runAsync(() => tester.pumpAndSettle());
       await tester.tap(find.text('搜索').last);
       await tester.runAsync(() => tester.pumpAndSettle());
-      expect(find.text('在线搜索'), findsOneWidget);
+      expect(find.text('搜索'), findsWidgets);
       expect(find.text('请先从右上角导入并启用书源。'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await capture('search');
-      expect(find.byType(SearchBar), findsOneWidget);
+      expect(find.byKey(const Key('online-search-field')), findsOneWidget);
       expect(tester.takeException(), isNull);
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pumpAndSettle();

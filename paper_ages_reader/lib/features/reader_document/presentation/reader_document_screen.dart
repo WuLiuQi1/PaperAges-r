@@ -40,11 +40,15 @@ class ReaderDocumentScreen extends StatefulWidget {
     required this.book,
     required this.repository,
     this.normalize = normalizeReaderDocument,
+    this.loadText,
+    this.onChangeSource,
   });
 
   final LibraryBook book;
   final LocalLibraryRepository repository;
   final Future<NormalizedTextDocument> Function(String) normalize;
+  final Future<String> Function()? loadText;
+  final Future<bool> Function(BuildContext context)? onChangeSource;
 
   @override
   State<ReaderDocumentScreen> createState() => _ReaderDocumentScreenState();
@@ -101,7 +105,9 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
 
   Future<void> _restore() async {
     try {
-      final text = await widget.repository.readText(widget.book);
+      final text =
+          await (widget.loadText?.call() ??
+              widget.repository.readText(widget.book));
       final document = await widget.normalize(text);
       final position = await widget.repository.readPosition(widget.book.id);
       final savedSize = await widget.repository.readPreference('textFontSize');
@@ -985,9 +991,11 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             _roundButton(
-              Icons.ios_share_rounded,
-              _shareCurrentPage,
-              tooltip: '分享',
+              widget.onChangeSource == null
+                  ? Icons.ios_share_rounded
+                  : Icons.swap_horiz_rounded,
+              widget.onChangeSource == null ? _shareCurrentPage : _changeSource,
+              tooltip: widget.onChangeSource == null ? '分享' : '换源',
             ),
             const SizedBox(width: 8),
             _roundButton(
@@ -1171,6 +1179,23 @@ class _ReaderDocumentScreenState extends State<ReaderDocumentScreen>
             .showSnackBar(const SnackBar(content: Text('暂时无法打开系统分享')));
       }
     }
+  }
+
+  Future<void> _changeSource() async {
+    final change = widget.onChangeSource;
+    if (change == null) return;
+    setState(() => _menu = false);
+    final changed = await change(context);
+    if (!changed || !mounted) return;
+    setState(() {
+      _document = null;
+      _paginator = null;
+      _page = null;
+      _offset = 0;
+      _history.clear();
+      _error = null;
+    });
+    await _restore();
   }
 
   Future<void> _chooseTurnMode() async {

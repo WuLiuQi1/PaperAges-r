@@ -66,6 +66,12 @@ void main() {
       expect(preserved.sourceUrl, 'https://two.example');
       expect(preserved.chapterKey, 'two-8');
       expect(database.networkBooks, hasLength(1));
+      await shelf.remove(
+        NetworkShelfBook.fromRow(database.networkBooks.single),
+      );
+      expect(database.networkBooks, isEmpty);
+      expect(bindings.bindingFor(id), isNull);
+      expect(database.position(id), isNull);
       await database.close();
     },
   );

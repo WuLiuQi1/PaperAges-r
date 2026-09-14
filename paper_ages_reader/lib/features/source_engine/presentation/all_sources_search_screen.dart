@@ -176,7 +176,11 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('在线搜索'),
+      toolbarHeight: 72,
+      title: const Text(
+        '搜索',
+        style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
+      ),
       actions: [
         if (widget.onManageSources != null)
           IconButton(
@@ -190,44 +194,116 @@ class _AllSourcesSearchScreenState extends State<AllSourcesSearchScreen> {
     body: Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(16),
-          child: SearchBar(
-            controller: _query,
-            hintText: '搜索书名或作者',
-            onSubmitted: (_) => _search(),
-            trailing: [
-              IconButton(
-                tooltip: '搜索',
-                onPressed: _loading ? null : _search,
-                icon: const Icon(Icons.search),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    key: const Key('online-search-field'),
+                    controller: _query,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => _search(),
+                    decoration: InputDecoration(
+                      hintText: '书名或作者',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 22),
+                      suffixIcon: _query.text.isEmpty
+                          ? const Icon(Icons.mic_none_rounded, size: 22)
+                          : IconButton(
+                              tooltip: '清空',
+                              onPressed: () {
+                                _token?.cancel();
+                                setState(() {
+                                  _query.clear();
+                                  _results.clear();
+                                  _loading = false;
+                                  _page = 1;
+                                });
+                              },
+                              icon: const Icon(Icons.cancel, size: 19),
+                            ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _loading || _query.text.trim().isEmpty
+                    ? null
+                    : _search,
+                child: const Text('搜索'),
               ),
             ],
           ),
         ),
-        SizedBox(
-          height: 46,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  selected: _selectedSourceUrl == null,
-                  label: Text('全部 · ${_safeSources.length}'),
-                  onSelected: (_) => _changeScope(null),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(14),
+            child: PopupMenuButton<String>(
+              tooltip: '选择搜索书源',
+              position: PopupMenuPosition.under,
+              onSelected: (value) => _changeScope(value.isEmpty ? null : value),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: '',
+                  child: Text('全部已启用书源（${_safeSources.length}）'),
                 ),
-              ),
-              for (final source in _safeSources)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    selected: _selectedSourceUrl == source.url,
-                    label: Text(source.name),
-                    onSelected: (_) => _changeScope(source.url),
+                for (final source in _safeSources)
+                  PopupMenuItem(value: source.url, child: Text(source.name)),
+              ],
+              child: SizedBox(
+                height: 52,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.public_rounded, size: 22),
+                      const SizedBox(width: 12),
+                      const Text(
+                        '书源',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      Flexible(
+                        child: Text(
+                          _selectedSourceUrl == null
+                              ? '全部已启用 · ${_safeSources.length}'
+                              : _safeSources
+                                        .where(
+                                          (source) =>
+                                              source.url == _selectedSourceUrl,
+                                        )
+                                        .map((source) => source.name)
+                                        .firstOrNull ??
+                                    '全部已启用',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.chevron_right_rounded),
+                    ],
                   ),
                 ),
-            ],
+              ),
+            ),
           ),
         ),
         if (_loading) const LinearProgressIndicator(),

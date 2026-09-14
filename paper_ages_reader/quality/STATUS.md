@@ -338,6 +338,35 @@ No scenario is Passed. T001 is In progress; T002-T064 are Not run.
   Android installation was performed.
 # Reader / source correction — 1.0.0+4 (2026-09-13)
 
+## Unified online reader and shelf — 1.0.0+11 (2026-09-14)
+
+- Online chapter content now enters the same `ReaderDocumentScreen` used by
+  local TXT books, retaining pagination, themes, font controls, contents,
+  search, TTS, bookmarks and notes. Its share position is replaced by the
+  network-only source-switch action; a committed switch reloads content in the
+  same reader.
+- Local and online books now share one two-column library grid and the same
+  generated-cover presentation. Local covers identify TXT/PDF at bottom left;
+  online covers identify the currently bound source. List mode follows the
+  same metadata rules.
+- Book action sheets now expose confirmed destructive intent. Local deletion
+  removes the library row, progress/preferences and imported file; online
+  removal clears the shelf row, binding and position while retaining chapter
+  cache for later cleanup.
+- The main search title is now `搜索`. The Material search bar and long row of
+  source chips were replaced with a compact platform-style field and one
+  source selector row, while keeping aggregate/single-source searching,
+  cancellation and progressive results.
+- Automated coverage includes the shared network-reader action contract,
+  narrow 320/390 px library layouts, local file deletion, and atomic network
+  shelf removal. iOS font metrics, source switching against a live book, and
+  the final visual match still require device verification.
+- Windows verification: `flutter analyze --no-pub` completed without
+  diagnostics; the full native-JS-enabled suite passed 193 tests; 320/390 px
+  UI render checks passed; and the 1.0.0+11 Android debug APK built
+  successfully (196,517,386 bytes, SHA-256
+  `3B5E0EE09831493C70BE2DEDD9D84C155AB6412FFDFAF014FB0302EDE8133477`).
+
 ## Open-source source workflow adaptation — 1.0.0+8 (2026-09-14)
 
 - With explicit user approval, the project adopts AGPL-3.0-only and records

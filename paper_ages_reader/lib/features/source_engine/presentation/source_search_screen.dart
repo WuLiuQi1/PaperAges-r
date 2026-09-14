@@ -7,11 +7,15 @@ import '../../downloads/data/chapter_cache.dart';
 import '../../downloads/data/persistent_download_task_repository.dart';
 import '../../downloads/application/download_manager.dart';
 import '../../downloads/domain/download_task.dart';
+import '../../library/data/local_library_repository.dart';
+import '../../library/domain/library_book.dart';
+import '../../reader_document/presentation/reader_document_screen.dart';
 import '../data/local_source_repository.dart';
 import '../data/network_shelf_repository.dart';
 import '../data/persistent_source_binding_store.dart';
 import '../domain/source_switch_service.dart';
 import '../domain/source_engine.dart';
+import 'source_switch_screen.dart';
 
 class SourceSearchScreen extends StatefulWidget {
   const SourceSearchScreen({super.key, required this.source});
@@ -273,6 +277,11 @@ class _NetworkBookScreenState extends State<NetworkBookScreen> {
                         source: widget.source,
                         chapter: chapters[index - 1],
                         engine: _engine,
+                        bookTitle: widget.book.title,
+                        bookId: NetworkShelfRepository.bookIdFor(
+                          sourceUrl: widget.source.url,
+                          locator: widget.book.locator,
+                        ),
                       ),
                     ),
                   ),
@@ -289,10 +298,14 @@ class NetworkChapterScreen extends StatefulWidget {
     required this.source,
     required this.chapter,
     this.engine,
+    this.bookTitle,
+    this.bookId,
   });
   final StoredBookSource source;
   final SourceChapter chapter;
   final StaticSourceEngine? engine;
+  final String? bookTitle;
+  final String? bookId;
   @override
   State<NetworkChapterScreen> createState() => _NetworkChapterScreenState();
 }
@@ -300,7 +313,12 @@ class NetworkChapterScreen extends StatefulWidget {
 class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
   late final StaticSourceEngine _engine = widget.engine ?? StaticSourceEngine();
   late final bool _ownsEngine = widget.engine == null;
-  late final Future<String> _content = _load();
+  String get _bookId =>
+      widget.bookId ??
+      NetworkShelfRepository.bookIdFor(
+        sourceUrl: widget.source.url,
+        locator: widget.chapter.bookLocator ?? widget.chapter.locator,
+      );
   @override
   void dispose() {
     if (_ownsEngine) _engine.close();
@@ -308,51 +326,64 @@ class _NetworkChapterScreenState extends State<NetworkChapterScreen> {
   }
 
   Future<String> _load() async {
+    final database = await AppDatabase.defaults();
+    final binding = PersistentSourceBindingStore(database).bindingFor(_bookId);
+    final activeSource =
+        await LocalSourceRepository(database)
+            .findByUrl(binding?.sourceUrl ?? widget.source.url) ??
+        widget.source;
+    final chapterUrl = binding?.locator ?? widget.chapter.locator;
     final cache = await ChapterCache.defaults();
     final key = ChapterCacheKey(
-      sourceUrl: widget.source.url,
+      sourceUrl: activeSource.url,
       sourceVersion: 'v1',
-      locator: widget.chapter.locator,
-      chapterKey: widget.chapter.key,
+      locator: chapterUrl,
+      chapterKey: binding?.chapterKey ?? widget.chapter.key,
       contentRevision: 'v1',
     );
     final cached = await cache.read(key);
     if (cached != null) return cached;
     final content = await _engine.content(
-      source: widget.source.configuration,
-      chapterUrl: widget.chapter.locator,
-      bookUrl: widget.chapter.bookLocator,
+      source: activeSource.configuration,
+      chapterUrl: chapterUrl,
+      bookUrl: _bookId.startsWith('${activeSource.url}|')
+          ? widget.chapter.bookLocator
+          : null,
     );
     await cache.write(key, content);
     return content;
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.chapter.title)),
-    body: FutureBuilder<String>(
-      future: _content,
-      builder: (context, snapshot) {
-        if (snapshot.hasError)
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('正文不可用：${snapshot.error}'),
-            ),
-          );
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: SelectableText(
-              snapshot.data!,
-              style: Theme.of(context).textTheme.bodyLarge
-                  ?.copyWith(height: 1.8),
-            ),
-          ),
-        );
-      },
-    ),
+  Widget build(BuildContext context) => FutureBuilder<AppDatabase>(
+    future: AppDatabase.defaults(),
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return const Scaffold(body: Center(child: Text('无法打开阅读器')));
+      }
+      if (!snapshot.hasData) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      final title = widget.bookTitle ?? widget.chapter.title;
+      return ReaderDocumentScreen(
+        book: LibraryBook(
+          id: _bookId,
+          kind: LibraryBookKind.text,
+          title: title,
+          filePath: '',
+          fingerprint: _bookId,
+          createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+        ),
+        repository: LocalLibraryRepository(snapshot.data!),
+        loadText: _load,
+        onChangeSource: (readerContext) async =>
+            await Navigator.of(readerContext).push<bool>(
+              MaterialPageRoute(
+                builder: (_) => SourceSwitchScreen(bookId: _bookId),
+              ),
+            ) ??
+            false,
+      );
+    },
   );
 }

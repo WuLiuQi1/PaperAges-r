@@ -104,6 +104,23 @@ class LocalLibraryRepository {
   Future<String> readText(LibraryBook book) =>
       File(book.filePath).readAsString();
 
+  Future<void> removeBook(LibraryBook book) async {
+    await _database.transaction((next) {
+      final books = List<Object?>.from(next['books']! as List)
+        ..removeWhere((row) => row is Map && row['id'] == book.id);
+      final positions = Map<String, Object?>.from(next['positions']! as Map)
+        ..remove(book.id);
+      final preferences = Map<String, Object?>.from(next['preferences']! as Map)
+        ..remove('bookmarks:${book.id}')
+        ..remove('notes:${book.id}');
+      next['books'] = books;
+      next['positions'] = positions;
+      next['preferences'] = preferences;
+    });
+    final file = File(book.filePath);
+    if (await file.exists()) await file.delete();
+  }
+
   Future<void> savePosition({
     required String bookId,
     required int blockIndex,

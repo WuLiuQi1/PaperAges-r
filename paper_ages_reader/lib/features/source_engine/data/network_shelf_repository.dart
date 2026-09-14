@@ -56,6 +56,25 @@ class NetworkShelfRepository {
     }
     next['sourceBindings'] = bindings;
   });
+
+  Future<void> remove(NetworkShelfBook book) => _database.transaction((next) {
+    final bookId = bookIdFor(sourceUrl: book.sourceUrl, locator: book.locator);
+    final books = List<Object?>.from(next['networkBooks']! as List)
+      ..removeWhere(
+        (row) =>
+            row is Map &&
+            row['sourceUrl'] == book.sourceUrl &&
+            row['locator'] == book.locator.toString(),
+      );
+    final bindings = Map<String, Object?>.from(
+      next['sourceBindings'] as Map? ?? const <String, Object?>{},
+    )..remove(bookId);
+    final positions = Map<String, Object?>.from(next['positions']! as Map)
+      ..remove(bookId);
+    next['networkBooks'] = books;
+    next['sourceBindings'] = bindings;
+    next['positions'] = positions;
+  });
 }
 
 class NetworkShelfBook {
